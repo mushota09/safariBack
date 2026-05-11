@@ -14,7 +14,12 @@ import ProgrammePage from './pages/ProgrammePage';
 import CompleteProfilePage from './pages/CompleteProfilePage';
 import './App.css';
 
-const GOOGLE_CLIENT_ID = '422318066430-vc31gve0aunm2kkv50cc50v4k0lo2nq6.apps.googleusercontent.com';
+// Load Google Client ID from environment variable
+const GOOGLE_CLIENT_ID = process.env.REACT_APP_GOOGLE_CLIENT_ID;
+
+if (!GOOGLE_CLIENT_ID) {
+  console.error('REACT_APP_GOOGLE_CLIENT_ID is not defined in environment variables');
+}
 
 function App() {
   return (
