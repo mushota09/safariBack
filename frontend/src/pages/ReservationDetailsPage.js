@@ -152,7 +152,115 @@ const ReservationDetailsPage = () => {
                 </div>
               </div>
 
-              {reservation.vehicule_inclus && (
+              {reservation.passagers_details && reservation.passagers_details.length > 0 && (
+                <div className="details-section">
+                  <h2 className="section-title">
+                    Passagers enregistrés ({reservation.passagers_details.length})
+                  </h2>
+                  <div className="passagers-list">
+                    {reservation.passagers_details.map((p, idx) => (
+                      <div key={p.id} className="passager-row">
+                        <div className="passager-row-header">
+                          <span className="passager-row-number">Passager {idx + 1}</span>
+                          {p.is_principal && (
+                            <span className="passager-row-badge">Principal</span>
+                          )}
+                        </div>
+                        <div className="info-grid">
+                          <div className="info-item">
+                            <span className="info-label">Nom complet</span>
+                            <span className="info-value">{p.nom_complet}</span>
+                          </div>
+                          {p.email && (
+                            <div className="info-item">
+                              <span className="info-label">Email</span>
+                              <span className="info-value">{p.email}</span>
+                            </div>
+                          )}
+                          {p.telephone && (
+                            <div className="info-item">
+                              <span className="info-label">Téléphone</span>
+                              <span className="info-value">{p.telephone}</span>
+                            </div>
+                          )}
+                          {p.chambre_id && (
+                            <div className="info-item">
+                              <span className="info-label">Chambre</span>
+                              <span className="info-value">#{p.chambre_id}</span>
+                            </div>
+                          )}
+                          {p.lit_id && (
+                            <div className="info-item">
+                              <span className="info-label">Lit</span>
+                              <span className="info-value">#{p.lit_id}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {reservation.vehicules_details && reservation.vehicules_details.length > 0 ? (
+                <div className="details-section">
+                  <h2 className="section-title">
+                    Véhicules enregistrés ({reservation.vehicules_details.length})
+                  </h2>
+                  <div className="vehicules-list">
+                    {reservation.vehicules_details.map((v, idx) => (
+                      <div key={v.id} className="vehicule-row">
+                        <div className="vehicule-row-header">
+                          <span className="vehicule-row-number">Véhicule {idx + 1}</span>
+                          <span className="vehicule-row-badge">{v.type_vehicule}</span>
+                        </div>
+                        <div className="info-grid">
+                          <div className="info-item">
+                            <span className="info-label">Immatriculation</span>
+                            <span className="info-value">{v.immatriculation}</span>
+                          </div>
+                          {v.marque && (
+                            <div className="info-item">
+                              <span className="info-label">Marque</span>
+                              <span className="info-value">{v.marque}</span>
+                            </div>
+                          )}
+                          {v.modele && (
+                            <div className="info-item">
+                              <span className="info-label">Modèle</span>
+                              <span className="info-value">{v.modele}</span>
+                            </div>
+                          )}
+                          {v.couleur && (
+                            <div className="info-item">
+                              <span className="info-label">Couleur</span>
+                              <span className="info-value">{v.couleur}</span>
+                            </div>
+                          )}
+                          {v.annee && (
+                            <div className="info-item">
+                              <span className="info-label">Année</span>
+                              <span className="info-value">{v.annee}</span>
+                            </div>
+                          )}
+                          {v.proprietaire_nom && (
+                            <div className="info-item">
+                              <span className="info-label">Propriétaire</span>
+                              <span className="info-value">{v.proprietaire_nom}</span>
+                            </div>
+                          )}
+                          {v.proprietaire_telephone && (
+                            <div className="info-item">
+                              <span className="info-label">Téléphone propriétaire</span>
+                              <span className="info-value">{v.proprietaire_telephone}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : reservation.vehicule_inclus && (
                 <div className="details-section">
                   <h2 className="section-title">Véhicule</h2>
                   <div className="info-grid">

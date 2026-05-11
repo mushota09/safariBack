@@ -7,7 +7,13 @@ from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status, BackgroundTasks
 
 from app.config import settings
-from app.models.reservation import Reservation, StatutReservation
+from app.models.reservation import (
+    Reservation,
+    ReservationPassager,
+    ReservationVehicule,
+    ReservationMode,
+    StatutReservation,
+)
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
 from app.models.utilisateur import Utilisateur
 from app.models.compagnie import Bateau, Niveau, Chambre, Lit
@@ -25,9 +31,12 @@ class ReservationService:
     ) -> Reservation:
         """Crée une nouvelle réservation avec verrou optimiste"""
         # Récupérer le voyage avec verrou
-        query = select(ProgrammeVoyage).where(
-            ProgrammeVoyage.id == reservation_data.voyage_id
-        ).with_for_update()
+        query = (
+            select(ProgrammeVoyage)
+            .where(ProgrammeVoyage.id == reservation_data.voyage_id)
+            .options(selectinload(ProgrammeVoyage.bateau))
+            .with_for_update()
+        )
 
         result = await db.execute(query)
         voyage = result.scalar_one_or_none()
@@ -52,14 +61,27 @@ class ReservationService:
         if places_dispo_passagers < reservation_data.nombre_passagers:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Not enough passenger seats available"
+                detail=(
+                    f"Plus assez de places passagers disponibles sur ce voyage "
+                    f"(restantes: {max(places_dispo_passagers, 0)}, demandées: {reservation_data.nombre_passagers})."
+                ),
             )
 
-        if reservation_data.vehicule_inclus and places_dispo_vehicules < 1:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="No vehicle spaces available"
-            )
+        if reservation_data.vehicule_inclus:
+            capacite_vehicules = getattr(voyage.bateau, "capacite_vehicules", None) if voyage.bateau else None
+            if not capacite_vehicules or capacite_vehicules <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Ce bateau ne supporte pas l'embarquement de véhicules.",
+                )
+            if places_dispo_vehicules < 1:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Plus aucune place véhicule n'est disponible sur ce voyage : "
+                        "d'autres passagers ont déjà réservé toutes les places véhicules."
+                    ),
+                )
 
         # Calculer le montant total
         montant_total = self._calculate_total_amount(voyage, reservation_data)
@@ -73,6 +95,7 @@ class ReservationService:
             utilisateur_id=user_id,
             voyage_id=reservation_data.voyage_id,
             type_reservation=reservation_data.type_reservation,
+            reservation_mode=ReservationMode.moi_meme,
             niveau_id=reservation_data.niveau_id,
             chambre_id=reservation_data.chambre_id,
             lit_id=reservation_data.lit_id,
@@ -86,6 +109,34 @@ class ReservationService:
         )
 
         db.add(reservation)
+        await db.flush()
+
+        # Trace du passager principal (utilisateur connecté)
+        user_result = await db.execute(select(Utilisateur).where(Utilisateur.id == user_id))
+        utilisateur = user_result.scalar_one_or_none()
+        if utilisateur is not None:
+            db.add(
+                ReservationPassager(
+                    reservation_id=reservation.id,
+                    nom_complet=getattr(utilisateur, "nom_complet", None) or utilisateur.email,
+                    email=utilisateur.email,
+                    telephone=getattr(utilisateur, "numero_telephone", None),
+                    chambre_id=reservation_data.chambre_id,
+                    lit_id=reservation_data.lit_id,
+                    is_principal=True,
+                )
+            )
+
+        if reservation_data.vehicule_inclus and reservation_data.type_vehicule and reservation_data.immatriculation_vehicule:
+            db.add(
+                ReservationVehicule(
+                    reservation_id=reservation.id,
+                    type_vehicule=reservation_data.type_vehicule,
+                    immatriculation=reservation_data.immatriculation_vehicule.strip().upper(),
+                    proprietaire_nom=getattr(utilisateur, "nom_complet", None) if utilisateur else None,
+                    proprietaire_telephone=getattr(utilisateur, "numero_telephone", None) if utilisateur else None,
+                )
+            )
 
         # Mettre à jour les places vendues (réservation temporaire)
         voyage.places_vendues_passagers += reservation_data.nombre_passagers
@@ -93,7 +144,16 @@ class ReservationService:
             voyage.places_vendues_vehicules += 1
 
         await db.commit()
-        await db.refresh(reservation)
+
+        refreshed = await db.execute(
+            select(Reservation)
+            .where(Reservation.id == reservation.id)
+            .options(
+                selectinload(Reservation.passagers_details),
+                selectinload(Reservation.vehicules_details),
+            )
+        )
+        reservation = refreshed.scalar_one()
 
         # Invalider le cache des traversées
         await redis_client.delete_pattern("traversees:*")
@@ -114,9 +174,17 @@ class ReservationService:
         limit: int = 100
     ) -> List[Reservation]:
         """Récupère les réservations d'un utilisateur"""
-        query = select(Reservation).where(
-            Reservation.utilisateur_id == user_id
-        ).order_by(Reservation.date_reservation.desc()).offset(skip).limit(limit)
+        query = (
+            select(Reservation)
+            .where(Reservation.utilisateur_id == user_id)
+            .options(
+                selectinload(Reservation.passagers_details),
+                selectinload(Reservation.vehicules_details),
+            )
+            .order_by(Reservation.date_reservation.desc())
+            .offset(skip)
+            .limit(limit)
+        )
 
         result = await db.execute(query)
         return result.scalars().all()
@@ -128,9 +196,16 @@ class ReservationService:
         user_id: int
     ) -> Reservation:
         """Récupère une réservation par son ID"""
-        query = select(Reservation).where(
-            Reservation.id == reservation_id,
-            Reservation.utilisateur_id == user_id
+        query = (
+            select(Reservation)
+            .where(
+                Reservation.id == reservation_id,
+                Reservation.utilisateur_id == user_id,
+            )
+            .options(
+                selectinload(Reservation.passagers_details),
+                selectinload(Reservation.vehicules_details),
+            )
         )
 
         result = await db.execute(query)
@@ -444,9 +519,12 @@ class ReservationService:
     ) -> Reservation:
         """Crée une réservation pour plusieurs passagers ou véhicules"""
         # Récupérer le voyage avec verrou
-        query = select(ProgrammeVoyage).where(
-            ProgrammeVoyage.id == reservation_data.voyage_id
-        ).with_for_update()
+        query = (
+            select(ProgrammeVoyage)
+            .where(ProgrammeVoyage.id == reservation_data.voyage_id)
+            .options(selectinload(ProgrammeVoyage.bateau))
+            .with_for_update()
+        )
 
         result = await db.execute(query)
         voyage = result.scalar_one_or_none()
@@ -479,14 +557,30 @@ class ReservationService:
         if nombre_passagers > 0 and places_dispo_passagers < nombre_passagers:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Not enough passenger seats available. Available: {places_dispo_passagers}, Requested: {nombre_passagers}"
+                detail=(
+                    "Plus assez de places passagers disponibles : "
+                    f"{max(places_dispo_passagers, 0)} restante(s) sur ce voyage, "
+                    f"{nombre_passagers} demandée(s)."
+                ),
             )
 
-        if nombre_vehicules > 0 and places_dispo_vehicules < nombre_vehicules:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Not enough vehicle spaces available. Available: {places_dispo_vehicules}, Requested: {nombre_vehicules}"
-            )
+        if nombre_vehicules > 0:
+            capacite_vehicules = getattr(voyage.bateau, "capacite_vehicules", None) if voyage.bateau else None
+            if not capacite_vehicules or capacite_vehicules <= 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Ce bateau ne supporte pas l'embarquement de véhicules.",
+                )
+            if places_dispo_vehicules < nombre_vehicules:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=(
+                        "Plus assez de places véhicules sur ce voyage : "
+                        f"{max(places_dispo_vehicules, 0)} place(s) restante(s), "
+                        f"{nombre_vehicules} demandée(s). "
+                        "D'autres passagers ont déjà réservé des places véhicules."
+                    ),
+                )
 
         # Vérifier les conflits de lits (pour passagers)
         if reservation_data.passagers:
@@ -538,17 +632,29 @@ class ReservationService:
         reference = f"RES-{uuid.uuid4().hex[:12].upper()}"
         expiration = datetime.utcnow() + timedelta(minutes=settings.RESERVATION_EXPIRATION_MINUTES)
 
-        # Pour l'instant, on stocke la première chambre/lit ou le premier véhicule
-        # TODO: Créer des tables de liaison pour stocker tous les passagers/véhicules
         premier_passager = reservation_data.passagers[0] if reservation_data.passagers else None
         premier_vehicule = reservation_data.vehicules[0] if reservation_data.vehicules else None
+
+        # Récupérer l'utilisateur pour identifier le passager principal
+        user_result = await db.execute(select(Utilisateur).where(Utilisateur.id == user_id))
+        utilisateur = user_result.scalar_one_or_none()
+
+        try:
+            mode_enum = ReservationMode(reservation_data.reservation_mode)
+        except ValueError:
+            mode_enum = (
+                ReservationMode.vehicule
+                if reservation_data.type_reservation == "vehicule"
+                else ReservationMode.moi_meme
+            )
 
         reservation = Reservation(
             reference_reservation=reference,
             utilisateur_id=user_id,
             voyage_id=reservation_data.voyage_id,
             type_reservation=reservation_data.type_reservation,
-            niveau_id=None,  # Pas utilisé dans le nouveau système
+            reservation_mode=mode_enum,
+            niveau_id=None,
             chambre_id=premier_passager.chambre_id if premier_passager else None,
             lit_id=premier_passager.lit_id if premier_passager else None,
             montant_total=round(montant_total, 2),
@@ -561,6 +667,50 @@ class ReservationService:
         )
 
         db.add(reservation)
+        await db.flush()
+
+        # Traçabilité: enregistrer chaque passager
+        if reservation_data.passagers:
+            email_principal = (utilisateur.email if utilisateur else None) or ""
+            for index, passager in enumerate(reservation_data.passagers):
+                is_principal = False
+                if mode_enum == ReservationMode.moi_et_autres and index == 0:
+                    is_principal = True
+                elif (
+                    email_principal
+                    and passager.email
+                    and passager.email.strip().lower() == email_principal.strip().lower()
+                ):
+                    is_principal = True
+
+                db.add(
+                    ReservationPassager(
+                        reservation_id=reservation.id,
+                        nom_complet=passager.nom_complet,
+                        email=passager.email,
+                        telephone=passager.telephone,
+                        chambre_id=passager.chambre_id,
+                        lit_id=passager.lit_id,
+                        is_principal=is_principal,
+                    )
+                )
+
+        # Traçabilité: enregistrer chaque véhicule
+        if reservation_data.vehicules:
+            for vehicule in reservation_data.vehicules:
+                db.add(
+                    ReservationVehicule(
+                        reservation_id=reservation.id,
+                        type_vehicule=vehicule.type_vehicule,
+                        immatriculation=vehicule.immatriculation.strip().upper(),
+                        marque=vehicule.marque,
+                        modele=vehicule.modele,
+                        couleur=vehicule.couleur,
+                        annee=vehicule.annee,
+                        proprietaire_nom=vehicule.proprietaire_nom,
+                        proprietaire_telephone=vehicule.proprietaire_telephone,
+                    )
+                )
 
         # Mettre à jour les places vendues
         if nombre_passagers > 0:
@@ -569,7 +719,17 @@ class ReservationService:
             voyage.places_vendues_vehicules += nombre_vehicules
 
         await db.commit()
-        await db.refresh(reservation)
+
+        # Recharger avec les relations pour la réponse
+        refreshed = await db.execute(
+            select(Reservation)
+            .where(Reservation.id == reservation.id)
+            .options(
+                selectinload(Reservation.passagers_details),
+                selectinload(Reservation.vehicules_details),
+            )
+        )
+        reservation = refreshed.scalar_one()
 
         # Invalider le cache
         await redis_client.delete_pattern("traversees:*")
