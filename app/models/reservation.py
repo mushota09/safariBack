@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import List, TYPE_CHECKING
 from datetime import datetime
 from sqlalchemy import String, Integer, Float, ForeignKey, DateTime, Boolean, Text, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -12,6 +12,13 @@ if TYPE_CHECKING:
     from app.models.compagnie import Niveau, Chambre, Lit
     from app.models.paiement import Paiement
     from app.models.ticket import Ticket
+
+
+class ReservationMode(str, enum.Enum):
+    moi_meme = "moi_meme"
+    moi_et_autres = "moi_et_autres"
+    les_autres = "les_autres"
+    vehicule = "vehicule"
 
 
 class TypeReservation(str, enum.Enum):
@@ -44,6 +51,9 @@ class Reservation(Base):
     voyage_id: Mapped[int] = mapped_column(Integer, ForeignKey("programme_voyage.id"), nullable=False, index=True)
 
     type_reservation: Mapped[TypeReservation] = mapped_column(SQLEnum(TypeReservation), nullable=False)
+    reservation_mode: Mapped[ReservationMode | None] = mapped_column(
+        SQLEnum(ReservationMode), nullable=True, index=True
+    )
     niveau_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("niveau.id"), nullable=True, index=True)
     chambre_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("chambre.id"), nullable=True, index=True)
     lit_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("lit.id"), nullable=True, index=True)
@@ -80,3 +90,63 @@ class Reservation(Base):
     lit: Mapped["Lit | None"] = relationship("Lit", back_populates="reservations")
     paiement: Mapped["Paiement | None"] = relationship("Paiement", back_populates="reservation", uselist=False)
     ticket: Mapped["Ticket | None"] = relationship("Ticket", back_populates="reservation", uselist=False)
+    passagers_details: Mapped[List["ReservationPassager"]] = relationship(
+        "ReservationPassager",
+        back_populates="reservation",
+        cascade="all, delete-orphan",
+    )
+    vehicules_details: Mapped[List["ReservationVehicule"]] = relationship(
+        "ReservationVehicule",
+        back_populates="reservation",
+        cascade="all, delete-orphan",
+    )
+
+
+class ReservationPassager(Base):
+    __tablename__ = "reservation_passager"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    reservation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("reservation.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    nom_complet: Mapped[str] = mapped_column(String(200), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    telephone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    chambre_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("chambre.id"), nullable=True, index=True
+    )
+    lit_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("lit.id"), nullable=True, index=True
+    )
+    is_principal: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    date_enregistrement: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    reservation: Mapped["Reservation"] = relationship(
+        "Reservation", back_populates="passagers_details"
+    )
+
+
+class ReservationVehicule(Base):
+    __tablename__ = "reservation_vehicule"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, index=True)
+    reservation_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("reservation.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    type_vehicule: Mapped[TypeVehicule] = mapped_column(SQLEnum(TypeVehicule), nullable=False)
+    immatriculation: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    marque: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    modele: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    couleur: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    annee: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    proprietaire_nom: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    proprietaire_telephone: Mapped[str | None] = mapped_column(String(50), nullable=True)
+    date_enregistrement: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=datetime.utcnow, nullable=False
+    )
+
+    reservation: Mapped["Reservation"] = relationship(
+        "Reservation", back_populates="vehicules_details"
+    )
