@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
 
@@ -27,7 +27,21 @@ class BateauInfo(BaseModel):
     id: int
     nom: str
     capacite_passagers: int
-    capacite_vehicules: Optional[int]
+    capacite_vehicules: Optional[int] = None
+    immatriculation: Optional[str] = None
+    vitesse_croisiere: Optional[float] = None
+    longueur: Optional[float] = None
+    tirant_eau: Optional[float] = None
+    puissance_moteur: Optional[float] = None
+    clim: Optional[bool] = False
+    wifi: Optional[bool] = False
+    restaurant: Optional[bool] = False
+    boutique: Optional[bool] = False
+    cabines: Optional[bool] = False
+    en_maintenance: Optional[bool] = False
+    date_derniere_revision: Optional[date] = None
+    date_prochaine_revision: Optional[date] = None
+    photo_principale: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -36,6 +50,11 @@ class BateauInfo(BaseModel):
 class CompagnieInfo(BaseModel):
     id: int
     nom: str
+    telephone: Optional[str] = None
+    email: Optional[str] = None
+    site_web: Optional[str] = None
+    logo: Optional[str] = None
+    politique_annulation: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -50,10 +69,18 @@ class TraverseeResponse(BaseModel):
     date_depart_programme: datetime
     date_arrivee_programmee: datetime
     prix_base: float
-    prix_promotionnel: Optional[float]
+    prix_promotionnel: Optional[float] = None
     statut: str
     places_disponibles_passagers: int
     places_disponibles_vehicules: int
+    places_totales_passagers: Optional[int] = None
+    places_totales_vehicules: Optional[int] = None
+    places_vendues_passagers: Optional[int] = None
+    places_vendues_vehicules: Optional[int] = None
+    capitaine_nom: Optional[str] = None
+    equipage_nombre: Optional[int] = None
+    remarques: Optional[str] = None
+    retard_motif: Optional[str] = None
 
     class Config:
         from_attributes = True
