@@ -33,10 +33,11 @@ ENV/
 *.swo
 *~
 
-# Environment
+# Environment - CRITICAL: Never commit .env!
 .env
 .env.local
-.env.example
+.env.*.local
+# Note: .env.example should be committed as a template
 
 # Database
 *.db
@@ -68,3 +69,6 @@ alembic/versions/*.py
 
 # FRONTEND
 frontend/node_modules/
+frontend/build/
+frontend/.env
+frontend/.env.local

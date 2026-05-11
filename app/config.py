@@ -1,37 +1,48 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
+"""Configuration settings for Safari Fast application.
+
+All sensitive values MUST come from environment variables.
+Never hardcode secrets in this file.
+"""
 from typing import List
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", case_sensitive=False)
+    """Application settings loaded from environment variables."""
 
-    # Database
-    DATABASE_URL: str = "postgresql+asyncpg://neondb_owner:npg_gZ4eYlSdwr3o@ep-tiny-sound-agslibpd-pooler.c-2.eu-central-1.aws.neon.tech/safari_db?sslmode=require&channel_binding=require"
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False,
+        extra="ignore"
+    )
+
+    # Database - MUST be set in .env
+    DATABASE_URL: str
     DATABASE_ECHO: bool = False
 
-    # Redis
-    REDIS_URL: str = "redis://:Rapha@1996...@31.97.217.126:6379/0"
+    # Redis - MUST be set in .env
+    REDIS_URL: str
     REDIS_CACHE_TTL: int = 60
 
-    # JWT
-    SECRET_KEY: str = "safari_fast_secret_key_2024_production_secure_random_string_change_in_production"
+    # JWT - MUST be set in .env
+    SECRET_KEY: str
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     REFRESH_TOKEN_EXPIRE_DAYS: int = 7
 
-    # Email
-    SMTP_HOST: str = "smtp.gmail.com"
+    # Email - MUST be set in .env
+    SMTP_HOST: str
     SMTP_PORT: int = 587
-    SMTP_USER: str = "mushota09@gmail.com"
-    SMTP_PASSWORD: str = "gipm bgxg xdql pioy"
-    SMTP_FROM: str = "mushota09@gmail.com"
+    SMTP_USER: str
+    SMTP_PASSWORD: str
+    SMTP_FROM: str
     SMTP_TLS: bool = True
 
     # Application
     APP_NAME: str = "Safari Fast - Réservation de Billets de Bateau"
     APP_VERSION: str = "1.0.0"
-    DEBUG: bool = True
-    ALLOWED_ORIGINS: str = "http://localhost:3000,http://localhost:8000,https://safari-fast.com"
+    DEBUG: bool = False  # Default to False for security
+    ALLOWED_ORIGINS: str
 
     # Réservation
     RESERVATION_EXPIRATION_MINUTES: int = 30
@@ -47,13 +58,14 @@ class Settings(BaseSettings):
     # Paiement
     PAIEMENT_SUCCESS_RATE: float = 0.95
 
-    # Google OAuth
-    GOOGLE_CLIENT_ID: str = "422318066430-t2tfnnq7lisjn4ra9j8rn64c8jch0stc.apps.googleusercontent.com"
-    GOOGLE_CLIENT_SECRET: str = "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"
-    GOOGLE_REDIRECT_URI: str = "http://localhost:8000/auth/google/callback"
+    # Google OAuth - MUST be set in .env
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
+    GOOGLE_REDIRECT_URI: str
 
     @property
     def allowed_origins_list(self) -> List[str]:
+        """Parse ALLOWED_ORIGINS string into a list."""
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",")]
 
 
