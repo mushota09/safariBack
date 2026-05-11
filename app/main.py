@@ -9,6 +9,9 @@ from app.config import settings
 from app.database import init_db, close_db
 from app.redis_client import redis_client
 
+# Import all models to register them with SQLAlchemy
+from app.models import *
+
 # Import des routers
 from app.modules.auth.router import router as auth_router
 from app.modules.compagnie.router import router as compagnie_router
@@ -17,6 +20,7 @@ from app.modules.reservation.router import router as reservation_router
 from app.modules.paiement.router import router as paiement_router
 from app.modules.embarquement.router import router as embarquement_router
 from app.modules.websocket.router import router as websocket_router
+from app.modules.geographie.router import router as geographie_router
 
 # Import des tâches périodiques
 from app.tasks.scheduler import start_scheduler, stop_scheduler
@@ -109,6 +113,7 @@ app.include_router(reservation_router)
 app.include_router(paiement_router)
 app.include_router(embarquement_router)
 app.include_router(websocket_router)
+app.include_router(geographie_router)
 
 
 if __name__ == "__main__":

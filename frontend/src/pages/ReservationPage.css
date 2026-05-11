@@ -1,0 +1,56 @@
+.reservation-page {
+  padding: 40px 0;
+}
+
+.reservation-grid {
+  display: grid;
+  grid-template-columns: 1fr 400px;
+  gap: 30px;
+}
+
+.reservation-form-section {
+  min-height: 400px;
+}
+
+.reservation-summary {
+  position: sticky;
+  top: 100px;
+  height: fit-content;
+}
+
+.summary-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  color: var(--text-dark);
+}
+
+.summary-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 16px 0;
+}
+
+.summary-total {
+  display: flex;
+  justify-content: space-between;
+  padding: 16px 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-dark);
+}
+
+.total-price {
+  font-size: 32px;
+  color: var(--accent-color);
+}
+
+@media (max-width: 1024px) {
+  .reservation-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reservation-summary {
+    position: static;
+  }
+}

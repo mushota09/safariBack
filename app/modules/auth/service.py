@@ -9,7 +9,8 @@ from app.models.utilisateur import Utilisateur
 from app.modules.auth.schemas import UserRegister, UserLogin
 from app.dependencies import create_access_token, create_refresh_token
 
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+# Utiliser Argon2 au lieu de bcrypt (plus moderne, plus sécurisé, pas de limite de 72 bytes)
+pwd_context = CryptContext(schemes=["argon2"], deprecated="auto")
 
 
 class AuthService:
@@ -25,10 +26,21 @@ class AuthService:
 
     async def register(self, db: AsyncSession, user_data: UserRegister) -> Utilisateur:
         """Enregistre un nouvel utilisateur"""
-        # Vérifier si l'utilisateur existe déjà
+        # Générer le username automatiquement à partir de l'email
+        username = user_data.email.split("@")[0]
+
+        # Vérifier si le username existe déjà et ajouter un suffixe si nécessaire
+        result = await db.execute(
+            select(Utilisateur).where(Utilisateur.username == username)
+        )
+        if result.scalar_one_or_none():
+            # Ajouter un suffixe numérique si le username existe
+            import random
+            username = f"{username}_{random.randint(1000, 9999)}"
+
+        # Vérifier si l'email ou le numéro de téléphone existe déjà
         result = await db.execute(
             select(Utilisateur).where(
-                (Utilisateur.username == user_data.username) |
                 (Utilisateur.email == user_data.email) |
                 (Utilisateur.numero_telephone == user_data.numero_telephone)
             )
@@ -36,12 +48,7 @@ class AuthService:
         existing_user = result.scalar_one_or_none()
 
         if existing_user:
-            if existing_user.username == user_data.username:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Username already registered"
-                )
-            elif existing_user.email == user_data.email:
+            if existing_user.email == user_data.email:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Email already registered"
@@ -56,7 +63,7 @@ class AuthService:
         hashed_password = self.get_password_hash(user_data.password)
 
         new_user = Utilisateur(
-            username=user_data.username,
+            username=username,
             email=user_data.email,
             numero_telephone=user_data.numero_telephone,
             hashed_password=hashed_password,

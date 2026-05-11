@@ -1,0 +1,208 @@
+.voyage-card {
+  background: #121321;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+  padding: 24px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  color: white;
+}
+
+.voyage-card:hover {
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  transform: translateY(-4px);
+}
+
+.voyage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+}
+
+.compagnie-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.compagnie-icon {
+  font-size: 24px;
+}
+
+.compagnie-name {
+  font-weight: 700;
+  font-size: 22px;
+  color: white;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+}
+
+.status-badge {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.status-confirme {
+  background-color: #e8f5e9;
+  color: var(--success-color);
+}
+
+.status-programme {
+  background-color: #e3f2fd;
+  color: var(--accent-color);
+}
+
+.voyage-route {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 20px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+}
+
+.route-point {
+  text-align: center;
+}
+
+.port-name {
+  font-weight: 700;
+  font-size: 18px;
+  color: white;
+  margin-bottom: 4px;
+}
+
+.port-code {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 8px;
+}
+
+.departure-time,
+.arrival-time {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.route-line {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.route-duration {
+  font-size: 14px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.route-arrow {
+  font-size: 24px;
+  color: var(--accent-color);
+}
+
+.voyage-date {
+  text-align: center;
+  padding: 12px;
+  background: linear-gradient(135deg, var(--primary-color) 0%, var(--secondary-color) 100%);
+  border-radius: 8px;
+  font-weight: 600;
+  color: var(--text-light);
+  margin-bottom: 16px;
+}
+
+.voyage-details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+
+.detail-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background-color: rgba(255, 255, 255, 0.05);
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.detail-icon {
+  font-size: 16px;
+}
+
+.detail-text {
+  color: white;
+  font-weight: 500;
+}
+
+.voyage-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.price-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.price {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--accent-color);
+}
+
+.price-original {
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.5);
+  text-decoration: line-through;
+}
+
+.price-promo {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--success-color);
+}
+
+.price-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+@media (max-width: 768px) {
+  .voyage-card {
+    padding: 16px;
+  }
+
+  .voyage-route {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .route-line {
+    flex-direction: row;
+    transform: rotate(90deg);
+  }
+
+  .voyage-footer {
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .voyage-footer .btn {
+    width: 100%;
+  }
+}

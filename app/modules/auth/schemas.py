@@ -4,12 +4,11 @@ from typing import Optional
 
 
 class UserRegister(BaseModel):
-    username: str = Field(..., min_length=3, max_length=50)
     email: EmailStr
-    numero_telephone: str = Field(..., min_length=8, max_length=20)
+    nom_complet: str = Field(..., min_length=2, max_length=200)
+    numero_telephone: str = Field(..., min_length=10, max_length=20)
     password: str = Field(..., min_length=6)
-    nom_complet: Optional[str] = None
-    date_naissance: Optional[date] = None
+    date_naissance: date
     langue_preferee: str = "fr"
 
 
@@ -32,8 +31,9 @@ class UserResponse(BaseModel):
     id: int
     username: str
     email: str
-    numero_telephone: str
+    numero_telephone: Optional[str]
     nom_complet: Optional[str]
+    photo_profil: Optional[str]
     date_naissance: Optional[date]
     langue_preferee: str
     is_active: bool
@@ -48,3 +48,9 @@ class UserResponse(BaseModel):
 class PasswordChange(BaseModel):
     old_password: str
     new_password: str = Field(..., min_length=6)
+
+
+class CompleteProfile(BaseModel):
+    numero_telephone: str = Field(..., min_length=8, max_length=20)
+    date_naissance: date
+

@@ -1,13 +1,18 @@
-# 🚢 Compagnie Bateau API
+# 🚢 Safari Fast - Réservation de Billets de Bateau
 
 API complète de réservation de billets de bateau avec FastAPI, SQLAlchemy 2.0 asynchrone, WebSockets, Redis et PostgreSQL.
 
+**Frontend React inclus** avec géolocalisation, recherche intelligente et authentification Google OAuth.
+
 ## 🎯 Fonctionnalités
 
+### Backend
 - ✅ **Authentification JWT** complète (register, login, refresh)
+- ✅ **Google OAuth 2.0** pour connexion simplifiée
 - ✅ **CRUD complet** pour tous les modules
 - ✅ **Système d'expand** pour charger les relations dynamiquement
 - ✅ **Recherche de traversées** avec cache Redis et streaming
+- ✅ **Géolocalisation** - Endpoints pour ports et villes avec coordonnées
 - ✅ **Réservations** avec verrou optimiste et expiration automatique
 - ✅ **Paiement** avec simulateur et génération de tickets (PDF + QR code)
 - ✅ **WebSockets** pour les mises à jour de disponibilité en temps réel
@@ -15,15 +20,80 @@ API complète de réservation de billets de bateau avec FastAPI, SQLAlchemy 2.0 
 - ✅ **Tâches périodiques** (expiration, nettoyage, etc.)
 - ✅ **Rate limiting** et sécurité
 - ✅ **Pagination** avec option no_pagination
+- ✅ **Email** avec templates HTML professionnels
+
+### Frontend
+- ✅ **React 18** avec React Router
+- ✅ **Géolocalisation automatique** pour trouver le port le plus proche
+- ✅ **Recherche intelligente** par port ou ville avec autocomplete
+- ✅ **Filtres avancés** (date, passagers, véhicule)
+- ✅ **Google OAuth** pour authentification
+- ✅ **Design professionnel** responsive (mobile/tablet/desktop)
+- ✅ **Couleur primaire** #010312 (bleu foncé élégant)
+- ✅ **Réservation en ligne** avec paiement simulé
+- ✅ **Confirmation par email** avec billet PDF
 
 ## 📋 Prérequis
 
+### Backend
 - Python 3.11+
-- PostgreSQL 14+
+- PostgreSQL 14+ (ou Neon PostgreSQL)
 - Redis 7+
 - uv (gestionnaire de paquets Python)
 
+### Frontend
+- Node.js 18+
+- npm ou yarn
+
 ## 🚀 Installation
+
+### Configuration Rapide (Production)
+
+Le projet est **déjà configuré** avec les valeurs de production dans `.env`.
+
+**Voir `PRODUCTION_SETUP.md` pour la documentation complète.**
+
+### 1. Backend
+
+```bash
+# Installer uv
+pip install uv
+
+# Installer les dépendances
+uv pip install -e .
+
+# Vérifier la configuration
+python verify_production_config.py
+
+# Initialiser la base de données
+alembic upgrade head
+python scripts/init_db.py
+
+# Démarrer le serveur
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+Backend disponible sur `http://localhost:8000`
+Documentation API: `http://localhost:8000/docs`
+
+### 2. Frontend
+
+```bash
+# Aller dans le dossier frontend
+cd frontend
+
+# Installer les dépendances
+npm install
+
+# Démarrer le serveur de développement
+npm start
+```
+
+Frontend disponible sur `http://localhost:3000`
+
+### Configuration Manuelle (Développement Local)
+
+Si vous voulez utiliser PostgreSQL et Redis locaux:
 
 ### 1. Cloner le projet
 
@@ -315,6 +385,50 @@ Après `python scripts/init_db.py`:
 
 - **Admin**: `username=admin`, `password=admin123`
 - **User**: `username=testuser`, `password=test123`
+
+## ⚡ Démarrage Rapide (TL;DR)
+
+```bash
+# Backend
+pip install uv
+uv pip install -e .
+python verify_production_config.py
+alembic upgrade head
+python scripts/init_db.py
+uvicorn app.main:app --reload
+
+# Frontend (nouveau terminal)
+cd frontend
+npm install
+npm start
+```
+
+Ouvrir `http://localhost:3000` dans votre navigateur.
+
+## 📚 Documentation Complète
+
+- **`PRODUCTION_SETUP.md`** - Configuration production détaillée
+- **`FEATURES.md`** - Liste complète des fonctionnalités
+- **`EXAMPLES.md`** - Exemples d'utilisation de l'API
+- **`DEPLOYMENT.md`** - Guide de déploiement
+- **`http://localhost:8000/docs`** - Documentation API interactive (Swagger)
+
+## 🔍 Vérification de la Configuration
+
+Utilisez le script de vérification pour tester toutes les connexions:
+
+```bash
+python verify_production_config.py
+```
+
+Ce script vérifie:
+- ✅ Connexion PostgreSQL (Neon)
+- ✅ Connexion Redis
+- ✅ Configuration Email (Gmail SMTP)
+- ✅ Configuration Google OAuth
+- ✅ Configuration JWT
+- ✅ Import des modèles et routers
+- ✅ Import des services
 
 ## 🤝 Contribution
 

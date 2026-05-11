@@ -9,7 +9,10 @@ from app.modules.reservation.schemas import (
     ReservationCreate,
     ReservationUpdate,
     ReservationResponse,
-    ReservationCancellation
+    ReservationCancellation,
+    BateauStructureResponse,
+    ChambresDisponiblesResponse,
+    ReservationCreateMultiple
 )
 from app.modules.reservation.service import reservation_service
 
@@ -85,3 +88,31 @@ async def cancel_reservation(
         cancellation_data.raison,
         background_tasks
     )
+
+
+@router.get("/voyage/{voyage_id}/structure", response_model=BateauStructureResponse)
+async def get_voyage_boat_structure(
+    voyage_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Récupère la structure du bateau avec les niveaux, chambres et lits disponibles pour un voyage"""
+    return await reservation_service.get_voyage_boat_structure(db, voyage_id)
+
+
+@router.get("/voyage/{voyage_id}/chambres-disponibles", response_model=ChambresDisponiblesResponse)
+async def get_chambres_disponibles(
+    voyage_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Récupère toutes les chambres disponibles (structure plate) pour un voyage"""
+    return await reservation_service.get_chambres_disponibles(db, voyage_id)
+
+
+@router.post("/multiple", response_model=ReservationResponse)
+async def create_reservation_multiple(
+    reservation_data: ReservationCreateMultiple,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Utilisateur, Depends(get_current_user)]
+):
+    """Crée une réservation pour plusieurs passagers"""
+    return await reservation_service.create_reservation_multiple(db, current_user.id, reservation_data)

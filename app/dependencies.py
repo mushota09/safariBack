@@ -26,10 +26,11 @@ async def get_current_user(
 
     try:
         payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
-        user_id: int = payload.get("sub")
-        if user_id is None:
+        user_id_str: str = payload.get("sub")
+        if user_id_str is None:
             raise credentials_exception
-    except JWTError:
+        user_id = int(user_id_str)  # Convert string to int
+    except (JWTError, ValueError):
         raise credentials_exception
 
     result = await db.execute(select(Utilisateur).where(Utilisateur.id == user_id))
@@ -44,6 +45,45 @@ async def get_current_user(
             detail="Inactive user"
         )
 
+    return user
+
+
+async def get_current_user_allow_inactive(
+    token: Annotated[str, Depends(oauth2_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)]
+) -> Utilisateur:
+    """Récupère l'utilisateur actuel même s'il est inactif (pour complétion de profil)"""
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        print(f"🔑 Decoding token: {token[:20]}...")
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id_str: str = payload.get("sub")
+        print(f"👤 User ID from token (string): {user_id_str}")
+        if user_id_str is None:
+            print("❌ User ID is None")
+            raise credentials_exception
+        user_id = int(user_id_str)  # Convert string to int
+        print(f"👤 User ID converted to int: {user_id}")
+    except JWTError as e:
+        print(f"❌ JWT Error: {e}")
+        raise credentials_exception
+    except ValueError as e:
+        print(f"❌ ValueError converting user_id: {e}")
+        raise credentials_exception
+
+    result = await db.execute(select(Utilisateur).where(Utilisateur.id == user_id))
+    user = result.scalar_one_or_none()
+
+    if user is None:
+        print(f"❌ User not found in database: {user_id}")
+        raise credentials_exception
+
+    print(f"✅ User found: {user.email}, is_active: {user.is_active}")
     return user
 
 
@@ -71,6 +111,10 @@ async def get_current_superuser(
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """Crée un token JWT d'accès"""
     to_encode = data.copy()
+    # Convert sub to string if it's an integer (JWT spec requires string)
+    if "sub" in to_encode and isinstance(to_encode["sub"], int):
+        to_encode["sub"] = str(to_encode["sub"])
+
     if expires_delta:
         expire = datetime.utcnow() + expires_delta
     else:
@@ -84,6 +128,10 @@ def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
 def create_refresh_token(data: dict) -> str:
     """Crée un token JWT de rafraîchissement"""
     to_encode = data.copy()
+    # Convert sub to string if it's an integer (JWT spec requires string)
+    if "sub" in to_encode and isinstance(to_encode["sub"], int):
+        to_encode["sub"] = str(to_encode["sub"])
+
     expire = datetime.utcnow() + timedelta(days=settings.REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({"exp": expire, "type": "refresh"})
     encoded_jwt = jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)

@@ -12,11 +12,19 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app.database import async_session_maker, init_db
+# Import all models to ensure they are registered with SQLAlchemy
+from app.models import *
 from app.models.geographie import Pays, Ville, Port
 from app.models.compagnie import CompagnieBateau, TypeBateau, Bateau, Niveau, Chambre, Lit, TypeLit
 from app.models.route import Route
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
 from app.models.utilisateur import Utilisateur
+from app.models.reservation import Reservation
+from app.models.ticket import Ticket
+from app.models.paiement import Paiement
+from app.models.promotion import Promotion
+from app.models.document import DocumentVoyageur
+from app.models.journal import Journal
 from app.modules.auth.service import auth_service
 
 
