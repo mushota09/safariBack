@@ -5,7 +5,15 @@ from app.models.compagnie import CompagnieBateau, TypeBateau, Bateau, Niveau, Ch
 from app.models.geographie import Pays, Ville, Port
 from app.models.route import Route, TarifSaisonnier, TypeSaison
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
-from app.models.reservation import Reservation, StatutReservation, TypeReservation, TypeVehicule
+from app.models.reservation import (
+    Reservation,
+    ReservationPassager,
+    ReservationVehicule,
+    ReservationMode,
+    StatutReservation,
+    TypeReservation,
+    TypeVehicule,
+)
 from app.models.ticket import Ticket
 from app.models.paiement import Paiement, StatutPaiement, ModePaiement
 from app.models.promotion import Promotion, TypeReduction
@@ -32,6 +40,9 @@ __all__ = [
     "ProgrammeVoyage",
     "StatutVoyage",
     "Reservation",
+    "ReservationPassager",
+    "ReservationVehicule",
+    "ReservationMode",
     "StatutReservation",
     "TypeReservation",
     "TypeVehicule",

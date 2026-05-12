@@ -209,3 +209,49 @@
     flex-direction: column;
   }
 }
+
+.passagers-list,
+.vehicules-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.passager-row,
+.vehicule-row {
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  background: #fafafa;
+}
+
+.passager-row-header,
+.vehicule-row-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.75rem;
+}
+
+.passager-row-number,
+.vehicule-row-number {
+  font-weight: 600;
+  color: #111827;
+}
+
+.passager-row-badge {
+  background: #2563eb;
+  color: #fff;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+}
+
+.vehicule-row-badge {
+  background: #16a34a;
+  color: #fff;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  text-transform: uppercase;
+}

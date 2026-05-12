@@ -374,6 +374,45 @@ const VoyageDetailPage = () => {
           <div className="detail-main">
             {!showReservationForm ? (
               <>
+                {/* Quick stats bar */}
+                <div className="quick-stats">
+                  <div className="quick-stat">
+                    <div className="quick-stat-icon">⏱️</div>
+                    <div>
+                      <div className="quick-stat-label">Durée</div>
+                      <div className="quick-stat-value">{calculateDuration()}</div>
+                    </div>
+                  </div>
+                  {estimatedDistance && (
+                    <div className="quick-stat">
+                      <div className="quick-stat-icon">🧭</div>
+                      <div>
+                        <div className="quick-stat-label">Distance estimée</div>
+                        <div className="quick-stat-value">≈ {estimatedDistance} km</div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="quick-stat">
+                    <div className="quick-stat-icon">💺</div>
+                    <div>
+                      <div className="quick-stat-label">Places restantes</div>
+                      <div className="quick-stat-value">
+                        {placesRestantes} <span className="quick-stat-sub">/ {totalPassagers}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="quick-stat">
+                    <div className="quick-stat-icon">💶</div>
+                    <div>
+                      <div className="quick-stat-label">À partir de</div>
+                      <div className="quick-stat-value">
+                        {prixAffiche}€{' '}
+                        {economie && <span className="quick-stat-badge">-{reductionPct}%</span>}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
                 {placesRestantes < 10 && placesRestantes > 0 && (
                   <div className="banner banner-warning">
                     <span className="banner-icon">⚠️</span>
@@ -430,14 +469,22 @@ const VoyageDetailPage = () => {
                     </span>
                   </div>
 
-                  <div className="route-horizontal">
-                    <div className="route-endpoint">
-                      <div className="route-endpoint-label">Départ</div>
-                      <div className="route-endpoint-port">
-                        {voyage.port_depart.nom}
-                        {voyage.port_depart.code_international && (
-                          <span className="timeline-port-code">{voyage.port_depart.code_international}</span>
-                        )}
+                  <div className="route-timeline">
+                    <div className="timeline-item">
+                      <div className="timeline-marker departure"></div>
+                      <div className="timeline-content">
+                        <div className="timeline-label">Départ</div>
+                        <div className="timeline-location">
+                          {voyage.port_depart.nom}
+                          {voyage.port_depart.code_international && (
+                            <span className="timeline-port-code">{voyage.port_depart.code_international}</span>
+                          )}
+                        </div>
+                        <div className="timeline-time">{formatTime(voyage.date_depart_programme)}</div>
+                        <div className="timeline-date">{formatDate(voyage.date_depart_programme)}</div>
+                        <div className="timeline-checkin">
+                          🛂 Présentation au quai conseillée à <strong>{computeArrivalCheckIn()}</strong>
+                        </div>
                       </div>
                       <div className="route-endpoint-time">{formatTime(voyage.date_depart_programme)}</div>
                       <div className="route-endpoint-date">{formatDate(voyage.date_depart_programme)}</div>
@@ -453,45 +500,18 @@ const VoyageDetailPage = () => {
                       <span className="route-arrow-dot route-arrow-dot-end" />
                     </div>
 
-                    <div className="route-endpoint route-endpoint-end">
-                      <div className="route-endpoint-label">Arrivée</div>
-                      <div className="route-endpoint-port">
-                        {voyage.port_arrivee.nom}
-                        {voyage.port_arrivee.code_international && (
-                          <span className="timeline-port-code">{voyage.port_arrivee.code_international}</span>
-                        )}
-                      </div>
-                      <div className="route-endpoint-time">{formatTime(voyage.date_arrivee_programmee)}</div>
-                      <div className="route-endpoint-date">{formatDate(voyage.date_arrivee_programmee)}</div>
-                    </div>
-                  </div>
-
-                  <div className="route-separator" />
-
-                  <div className="route-stats">
-                    <div className="route-stat">
-                      <span className="route-stat-icon">⏱️</span>
-                      <div>
-                        <div className="route-stat-label">Durée</div>
-                        <div className="route-stat-value">{calculateDuration()}</div>
-                      </div>
-                    </div>
-                    {estimatedDistance && (
-                      <div className="route-stat">
-                        <span className="route-stat-icon">🧭</span>
-                        <div>
-                          <div className="route-stat-label">Distance estimée</div>
-                          <div className="route-stat-value">≈ {estimatedDistance} km</div>
+                    <div className="timeline-item">
+                      <div className="timeline-marker arrival"></div>
+                      <div className="timeline-content">
+                        <div className="timeline-label">Arrivée</div>
+                        <div className="timeline-location">
+                          {voyage.port_arrivee.nom}
+                          {voyage.port_arrivee.code_international && (
+                            <span className="timeline-port-code">{voyage.port_arrivee.code_international}</span>
+                          )}
                         </div>
-                      </div>
-                    )}
-                    <div className="route-stat">
-                      <span className="route-stat-icon">💺</span>
-                      <div>
-                        <div className="route-stat-label">Places restantes</div>
-                        <div className="route-stat-value">
-                          {placesRestantes}/{totalPassagers}
-                        </div>
+                        <div className="timeline-time">{formatTime(voyage.date_arrivee_programmee)}</div>
+                        <div className="timeline-date">{formatDate(voyage.date_arrivee_programmee)}</div>
                       </div>
                     </div>
                   </div>
@@ -567,7 +587,7 @@ const VoyageDetailPage = () => {
                 </div>
 
                 {/* À bord — caractéristiques techniques */}
-                <div className="card about-card">
+                <div className="card">
                   <div className="card-header">
                     <h2>À bord — {voyage.bateau.nom}</h2>
                     {voyage.bateau.immatriculation && (
@@ -575,7 +595,7 @@ const VoyageDetailPage = () => {
                     )}
                   </div>
 
-                  <div className="info-grid about-grid">
+                  <div className="info-grid">
                     <div className="info-box">
                       <div className="info-icon">🚢</div>
                       <div className="info-content">
@@ -661,6 +681,11 @@ const VoyageDetailPage = () => {
                       <span className="amenity-icon">🍽️</span>
                       <span className="amenity-label">Restaurant</span>
                       <span className="amenity-status">{voyage.bateau.restaurant ? 'À bord' : 'Non disponible'}</span>
+                    </div>
+                    <div className={`amenity ${voyage.bateau.clim ? 'on' : 'off'}`}>
+                      <span className="amenity-icon">❄️</span>
+                      <span className="amenity-label">Climatisation</span>
+                      <span className="amenity-status">{voyage.bateau.clim ? 'Oui' : 'Non'}</span>
                     </div>
                     <div className={`amenity ${voyage.bateau.cabines ? 'on' : 'off'}`}>
                       <span className="amenity-icon">🛏️</span>
@@ -798,22 +823,15 @@ const VoyageDetailPage = () => {
                   </div>
                 </div>
 
-                {/* Informations spécifiques au voyage */}
-                <div className="card">
-                  <div className="card-header">
-                    <h2>Informations spécifiques au voyage</h2>
-                  </div>
-                  <div className="info-special">
-                    <span className="info-special-icon">🛂</span>
-                    <div className="info-special-text">
-                      <strong>Présentation au quai conseillée à {computeArrivalCheckIn()}</strong>
-                      <span className="info-special-sub">Soit 45 min avant le départ pour l’embarquement.</span>
+                {/* Remarques voyage */}
+                {voyage.remarques && (
+                  <div className="card">
+                    <div className="card-header">
+                      <h2>Informations spécifiques au voyage</h2>
                     </div>
-                  </div>
-                  {voyage.remarques && (
                     <p className="remark-text">{voyage.remarques}</p>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* Contact compagnie */}
                 {(voyage.compagnie.telephone || voyage.compagnie.email || voyage.compagnie.site_web) && (
