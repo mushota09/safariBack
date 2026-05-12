@@ -107,27 +107,48 @@ class TraverseeService:
 
     def _voyage_to_response(self, voyage: ProgrammeVoyage) -> TraverseeResponse:
         """Convertit un ProgrammeVoyage en TraverseeResponse"""
+        bateau = voyage.bateau
+        compagnie = voyage.compagnie
         return TraverseeResponse(
             id=voyage.id,
             port_depart={
                 "id": voyage.port_depart.id,
                 "nom": voyage.port_depart.nom,
-                "code_international": voyage.port_depart.code_international
+                "code_international": voyage.port_depart.code_international,
             },
             port_arrivee={
                 "id": voyage.port_arrivee.id,
                 "nom": voyage.port_arrivee.nom,
-                "code_international": voyage.port_arrivee.code_international
+                "code_international": voyage.port_arrivee.code_international,
             },
             bateau={
-                "id": voyage.bateau.id,
-                "nom": voyage.bateau.nom,
-                "capacite_passagers": voyage.bateau.capacite_passagers,
-                "capacite_vehicules": voyage.bateau.capacite_vehicules
+                "id": bateau.id,
+                "nom": bateau.nom,
+                "capacite_passagers": bateau.capacite_passagers,
+                "capacite_vehicules": bateau.capacite_vehicules,
+                "immatriculation": bateau.immatriculation,
+                "vitesse_croisiere": bateau.vitesse_croisiere,
+                "longueur": bateau.longueur,
+                "tirant_eau": bateau.tirant_eau,
+                "puissance_moteur": bateau.puissance_moteur,
+                "clim": bateau.clim,
+                "wifi": bateau.wifi,
+                "restaurant": bateau.restaurant,
+                "boutique": bateau.boutique,
+                "cabines": bateau.cabines,
+                "en_maintenance": bateau.en_maintenance,
+                "date_derniere_revision": bateau.date_derniere_revision,
+                "date_prochaine_revision": bateau.date_prochaine_revision,
+                "photo_principale": bateau.photo_principale,
             },
             compagnie={
-                "id": voyage.compagnie.id,
-                "nom": voyage.compagnie.nom
+                "id": compagnie.id,
+                "nom": compagnie.nom,
+                "telephone": compagnie.telephone,
+                "email": compagnie.email,
+                "site_web": compagnie.site_web,
+                "logo": compagnie.logo,
+                "politique_annulation": compagnie.politique_annulation,
             },
             date_depart_programme=voyage.date_depart_programme,
             date_arrivee_programmee=voyage.date_arrivee_programmee,
@@ -135,7 +156,15 @@ class TraverseeService:
             prix_promotionnel=voyage.prix_promotionnel,
             statut=voyage.statut.value,
             places_disponibles_passagers=voyage.places_disponibles_passagers - voyage.places_vendues_passagers,
-            places_disponibles_vehicules=voyage.places_disponibles_vehicules - voyage.places_vendues_vehicules
+            places_disponibles_vehicules=voyage.places_disponibles_vehicules - voyage.places_vendues_vehicules,
+            places_totales_passagers=voyage.places_disponibles_passagers,
+            places_totales_vehicules=voyage.places_disponibles_vehicules,
+            places_vendues_passagers=voyage.places_vendues_passagers,
+            places_vendues_vehicules=voyage.places_vendues_vehicules,
+            capitaine_nom=voyage.capitaine_nom,
+            equipage_nombre=voyage.equipage_nombre,
+            remarques=voyage.remarques,
+            retard_motif=voyage.retard_motif,
         )
 
     def _generate_cache_key(self, search_params: TraverseeSearchParams) -> str:

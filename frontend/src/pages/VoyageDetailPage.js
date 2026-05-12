@@ -323,78 +323,259 @@ const VoyageDetailPage = () => {
   const placesRestantes = voyage.places_disponibles_passagers;
   const tauxOccupation = ((voyage.places_vendues_passagers / (voyage.places_vendues_passagers + placesRestantes)) * 100).toFixed(0);
 
+  const capaciteTotaleVehicules = voyage.places_totales_vehicules ?? voyage.bateau?.capacite_vehicules ?? 0;
+  const placesVenduesVehicules = voyage.places_vendues_vehicules ?? 0;
+  const placesDispoVehicules = capaciteTotaleVehicules - placesVenduesVehicules;
+  const tauxOccupationVehicules =
+    capaciteTotaleVehicules > 0
+      ? ((placesVenduesVehicules / capaciteTotaleVehicules) * 100).toFixed(0)
+      : 0;
+
+  const totalPassagers = voyage.places_vendues_passagers + placesRestantes;
+
+  const computeArrivalCheckIn = () => {
+    const depart = new Date(voyage.date_depart_programme);
+    const arrival = new Date(depart.getTime() - 45 * 60 * 1000);
+    return format(arrival, 'HH:mm');
+  };
+
+  const durationMinutes = (() => {
+    const depart = new Date(voyage.date_depart_programme);
+    const arrivee = new Date(voyage.date_arrivee_programmee);
+    return Math.max(0, Math.round((arrivee - depart) / 60000));
+  })();
+
+  const estimatedDistance = (() => {
+    const vitesse = voyage.bateau?.vitesse_croisiere;
+    if (!vitesse || durationMinutes <= 0) return null;
+    return Math.round((vitesse * durationMinutes) / 60);
+  })();
+
+  const prixAffiche = voyage.prix_promotionnel ?? voyage.prix_base;
+  const economie = voyage.prix_promotionnel ? (voyage.prix_base - voyage.prix_promotionnel).toFixed(2) : null;
+  const reductionPct = voyage.prix_promotionnel
+    ? Math.round(((voyage.prix_base - voyage.prix_promotionnel) / voyage.prix_base) * 100)
+    : 0;
+
+  const formatShortDate = (d) => (d ? format(new Date(d), 'dd MMM yyyy', { locale: fr }) : '—');
+
+  const policiesFrais = [
+    { label: 'Plus de 7 jours avant le départ', frais: 'Aucun frais', tone: 'safe' },
+    { label: 'Entre 3 et 7 jours avant', frais: '25 % de frais', tone: 'soft' },
+    { label: 'Entre 1 et 3 jours avant', frais: '50 % de frais', tone: 'warning' },
+    { label: 'Moins de 24 h avant', frais: '80 % de frais', tone: 'danger' },
+    { label: 'Après le départ', frais: 'Non remboursable', tone: 'danger' },
+  ];
+
   return (
     <div className="voyage-detail-page">
-      <div className="detail-hero">
-        <div className="container">
-          <button onClick={() => navigate(-1)} className="back-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-            Retour
-          </button>
-
-          <div className="hero-content">
-            <div className="hero-badge">
-              <span className={`status-pill status-${voyage.statut}`}>
-                {getStatusLabel(voyage.statut)}
-              </span>
-            </div>
-            <h1 className="hero-title">{voyage.bateau.nom}</h1>
-            <p className="hero-subtitle">Opéré par {voyage.compagnie.nom}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="container">
+      <div className="container detail-top">
         <div className="detail-layout">
           <div className="detail-main">
             {!showReservationForm ? (
               <>
+                {placesRestantes < 10 && placesRestantes > 0 && (
+                  <div className="banner banner-warning">
+                    <span className="banner-icon">⚠️</span>
+                    <div>
+                      <strong>Dépêchez-vous !</strong> Il ne reste plus que <strong>{placesRestantes}</strong> place(s) pour cette traversée.
+                    </div>
+                  </div>
+                )}
+                {voyage.statut === 'retarde' && voyage.retard_motif && (
+                  <div className="banner banner-danger">
+                    <span className="banner-icon">⏰</span>
+                    <div>
+                      <strong>Traversée retardée :</strong> {voyage.retard_motif}
+                    </div>
+                  </div>
+                )}
+
                 {/* Itinéraire */}
                 <div className="card route-card">
-                  <div className="card-header">
-                    <h2>Itinéraire</h2>
-                    <span className="duration-badge">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 6v6l4 2"/>
-                      </svg>
-                      {calculateDuration()}
+                  <div className="route-image">
+                    {voyage.bateau.photo_principale ? (
+                      <img
+                        src={voyage.bateau.photo_principale}
+                        alt={voyage.bateau.nom}
+                        className="route-image-photo"
+                      />
+                    ) : (
+                      <div className="route-image-placeholder">
+                        <span className="route-image-emoji">🚢</span>
+                        <div className="route-image-info">
+                          <div className="route-image-name">{voyage.bateau.nom}</div>
+                          <div className="route-image-company">Opéré par {voyage.compagnie.nom}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="card-header card-header-route">
+                    <div className="route-header-left">
+                      <button
+                        type="button"
+                        onClick={() => navigate(-1)}
+                        className="back-arrow"
+                        aria-label="Retour"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M19 12H5M12 19l-7-7 7-7"/>
+                        </svg>
+                      </button>
+                      <h2>Itinéraire</h2>
+                    </div>
+                    <span className={`status-pill status-${voyage.statut}`}>
+                      {getStatusLabel(voyage.statut)}
                     </span>
                   </div>
 
-                  <div className="route-timeline">
-                    <div className="timeline-item">
-                      <div className="timeline-marker departure"></div>
-                      <div className="timeline-content">
-                        <div className="timeline-label">Départ</div>
-                        <div className="timeline-location">{voyage.port_depart.nom}</div>
-                        <div className="timeline-time">{formatTime(voyage.date_depart_programme)}</div>
-                        <div className="timeline-date">{formatDate(voyage.date_depart_programme)}</div>
+                  <div className="route-horizontal">
+                    <div className="route-endpoint">
+                      <div className="route-endpoint-label">Départ</div>
+                      <div className="route-endpoint-port">
+                        {voyage.port_depart.nom}
+                        {voyage.port_depart.code_international && (
+                          <span className="timeline-port-code">{voyage.port_depart.code_international}</span>
+                        )}
                       </div>
+                      <div className="route-endpoint-time">{formatTime(voyage.date_depart_programme)}</div>
+                      <div className="route-endpoint-date">{formatDate(voyage.date_depart_programme)}</div>
                     </div>
 
-                    <div className="timeline-connector"></div>
+                    <div className="route-arrow" aria-hidden="true">
+                      <span className="route-arrow-dot route-arrow-dot-start" />
+                      <span className="route-arrow-line" />
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                      <span className="route-arrow-line" />
+                      <span className="route-arrow-dot route-arrow-dot-end" />
+                    </div>
 
-                    <div className="timeline-item">
-                      <div className="timeline-marker arrival"></div>
-                      <div className="timeline-content">
-                        <div className="timeline-label">Arrivée</div>
-                        <div className="timeline-location">{voyage.port_arrivee.nom}</div>
-                        <div className="timeline-time">{formatTime(voyage.date_arrivee_programmee)}</div>
-                        <div className="timeline-date">{formatDate(voyage.date_arrivee_programmee)}</div>
+                    <div className="route-endpoint route-endpoint-end">
+                      <div className="route-endpoint-label">Arrivée</div>
+                      <div className="route-endpoint-port">
+                        {voyage.port_arrivee.nom}
+                        {voyage.port_arrivee.code_international && (
+                          <span className="timeline-port-code">{voyage.port_arrivee.code_international}</span>
+                        )}
+                      </div>
+                      <div className="route-endpoint-time">{formatTime(voyage.date_arrivee_programmee)}</div>
+                      <div className="route-endpoint-date">{formatDate(voyage.date_arrivee_programmee)}</div>
+                    </div>
+                  </div>
+
+                  <div className="route-separator" />
+
+                  <div className="route-stats">
+                    <div className="route-stat">
+                      <span className="route-stat-icon">⏱️</span>
+                      <div>
+                        <div className="route-stat-label">Durée</div>
+                        <div className="route-stat-value">{calculateDuration()}</div>
+                      </div>
+                    </div>
+                    {estimatedDistance && (
+                      <div className="route-stat">
+                        <span className="route-stat-icon">🧭</span>
+                        <div>
+                          <div className="route-stat-label">Distance estimée</div>
+                          <div className="route-stat-value">≈ {estimatedDistance} km</div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="route-stat">
+                      <span className="route-stat-icon">💺</span>
+                      <div>
+                        <div className="route-stat-label">Places restantes</div>
+                        <div className="route-stat-value">
+                          {placesRestantes}/{totalPassagers}
+                        </div>
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Informations du bateau */}
+                {/* Disponibilité en direct */}
                 <div className="card">
                   <div className="card-header">
-                    <h2>Informations du bateau</h2>
+                    <h2>Disponibilité en direct</h2>
+                    <span className="live-pill">● en direct</span>
                   </div>
-                  <div className="info-grid">
+
+                  <div className="capacity-grid">
+                    <div className="capacity-card capacity-passagers">
+                      <div className="capacity-head">
+                        <span className="capacity-icon">👥</span>
+                        <div>
+                          <div className="capacity-title">Passagers</div>
+                          <div className="capacity-sub">
+                            {voyage.places_vendues_passagers} réservés sur {totalPassagers}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="capacity-bar">
+                        <div
+                          className="capacity-bar-fill capacity-bar-passagers"
+                          style={{ width: `${tauxOccupation}%` }}
+                        />
+                      </div>
+                      <div className="capacity-stats">
+                        <span><strong>{placesRestantes}</strong> place(s) restante(s)</span>
+                        <span className="capacity-pct">{tauxOccupation}% occupé</span>
+                      </div>
+                    </div>
+
+                    {capaciteTotaleVehicules > 0 ? (
+                      <div className="capacity-card capacity-vehicules">
+                        <div className="capacity-head">
+                          <span className="capacity-icon">🚗</span>
+                          <div>
+                            <div className="capacity-title">Véhicules</div>
+                            <div className="capacity-sub">
+                              {placesVenduesVehicules} réservés sur {capaciteTotaleVehicules}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="capacity-bar">
+                          <div
+                            className="capacity-bar-fill capacity-bar-vehicules"
+                            style={{ width: `${tauxOccupationVehicules}%` }}
+                          />
+                        </div>
+                        <div className="capacity-stats">
+                          <span><strong>{Math.max(placesDispoVehicules, 0)}</strong> place(s) véhicule(s)</span>
+                          <span className="capacity-pct">{tauxOccupationVehicules}% occupé</span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="capacity-card capacity-disabled">
+                        <div className="capacity-head">
+                          <span className="capacity-icon">🚫</span>
+                          <div>
+                            <div className="capacity-title">Véhicules</div>
+                            <div className="capacity-sub">Embarquement non disponible</div>
+                          </div>
+                        </div>
+                        <p className="capacity-note">
+                          Ce bateau ne supporte pas l’embarquement de véhicules.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* À bord — caractéristiques techniques */}
+                <div className="card about-card">
+                  <div className="card-header">
+                    <h2>À bord — {voyage.bateau.nom}</h2>
+                    {voyage.bateau.immatriculation && (
+                      <span className="badge-muted">Imm. {voyage.bateau.immatriculation}</span>
+                    )}
+                  </div>
+
+                  <div className="info-grid about-grid">
                     <div className="info-box">
                       <div className="info-icon">🚢</div>
                       <div className="info-content">
@@ -412,77 +593,270 @@ const VoyageDetailPage = () => {
                     <div className="info-box">
                       <div className="info-icon">👥</div>
                       <div className="info-content">
-                        <div className="info-label">Capacité totale</div>
-                        <div className="info-value">{voyage.bateau.capacite_passagers} passagers</div>
+                        <div className="info-label">Capacité passagers</div>
+                        <div className="info-value">{voyage.bateau.capacite_passagers}</div>
                       </div>
                     </div>
-                    {voyage.bateau.capacite_vehicules > 0 && (
+                    {capaciteTotaleVehicules > 0 && (
                       <div className="info-box">
                         <div className="info-icon">🚗</div>
                         <div className="info-content">
-                          <div className="info-label">Véhicules</div>
-                          <div className="info-value">{voyage.bateau.capacite_vehicules} places</div>
+                          <div className="info-label">Capacité véhicules</div>
+                          <div className="info-value">{capaciteTotaleVehicules}</div>
+                        </div>
+                      </div>
+                    )}
+                    {voyage.bateau.vitesse_croisiere && (
+                      <div className="info-box">
+                        <div className="info-icon">⚡</div>
+                        <div className="info-content">
+                          <div className="info-label">Vitesse de croisière</div>
+                          <div className="info-value">{voyage.bateau.vitesse_croisiere} nœuds</div>
+                        </div>
+                      </div>
+                    )}
+                    {voyage.bateau.longueur && (
+                      <div className="info-box">
+                        <div className="info-icon">📏</div>
+                        <div className="info-content">
+                          <div className="info-label">Longueur</div>
+                          <div className="info-value">{voyage.bateau.longueur} m</div>
+                        </div>
+                      </div>
+                    )}
+                    {voyage.bateau.tirant_eau && (
+                      <div className="info-box">
+                        <div className="info-icon">🌊</div>
+                        <div className="info-content">
+                          <div className="info-label">Tirant d’eau</div>
+                          <div className="info-value">{voyage.bateau.tirant_eau} m</div>
+                        </div>
+                      </div>
+                    )}
+                    {voyage.bateau.puissance_moteur && (
+                      <div className="info-box">
+                        <div className="info-icon">🔧</div>
+                        <div className="info-content">
+                          <div className="info-label">Puissance moteur</div>
+                          <div className="info-value">{voyage.bateau.puissance_moteur} ch</div>
                         </div>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Services disponibles */}
+                {/* Services & équipements */}
                 <div className="card">
                   <div className="card-header">
-                    <h2>Services disponibles</h2>
+                    <h2>Services & équipements à bord</h2>
                   </div>
-                  <div className="availability-section">
-                    <div className="availability-main">
-                      <div className="availability-number">{placesRestantes}</div>
-                      <div className="availability-label">Places disponibles</div>
-                      <div className="availability-bar">
-                        <div className="availability-fill" style={{width: `${tauxOccupation}%`}}></div>
-                      </div>
-                      <div className="availability-text">{tauxOccupation}% réservé</div>
+
+                  <div className="amenities-grid">
+                    <div className={`amenity ${voyage.bateau.wifi ? 'on' : 'off'}`}>
+                      <span className="amenity-icon">📶</span>
+                      <span className="amenity-label">WiFi</span>
+                      <span className="amenity-status">{voyage.bateau.wifi ? 'Inclus' : 'Non disponible'}</span>
                     </div>
-
-                    {placesRestantes < 10 && placesRestantes > 0 && (
-                      <div className="availability-alert">
-                        ⚠️ Plus que {placesRestantes} places disponibles !
-                      </div>
-                    )}
-
-                    <div className="services-grid">
-                      {voyage.bateau.wifi && (
-                        <div className="service-item">
-                          <span className="service-icon">📶</span>
-                          <span>WiFi</span>
-                        </div>
-                      )}
-                      {voyage.bateau.restaurant && (
-                        <div className="service-item">
-                          <span className="service-icon">🍽️</span>
-                          <span>Restaurant</span>
-                        </div>
-                      )}
-                      {voyage.bateau.clim && (
-                        <div className="service-item">
-                          <span className="service-icon">❄️</span>
-                          <span>Climatisation</span>
-                        </div>
-                      )}
-                      {voyage.bateau.cabines && (
-                        <div className="service-item">
-                          <span className="service-icon">🛏️</span>
-                          <span>Cabines</span>
-                        </div>
-                      )}
-                      {voyage.bateau.boutique && (
-                        <div className="service-item">
-                          <span className="service-icon">🛍️</span>
-                          <span>Boutique</span>
-                        </div>
-                      )}
+                    <div className={`amenity ${voyage.bateau.restaurant ? 'on' : 'off'}`}>
+                      <span className="amenity-icon">🍽️</span>
+                      <span className="amenity-label">Restaurant</span>
+                      <span className="amenity-status">{voyage.bateau.restaurant ? 'À bord' : 'Non disponible'}</span>
+                    </div>
+                    <div className={`amenity ${voyage.bateau.cabines ? 'on' : 'off'}`}>
+                      <span className="amenity-icon">🛏️</span>
+                      <span className="amenity-label">Cabines</span>
+                      <span className="amenity-status">{voyage.bateau.cabines ? 'Disponibles' : 'Non disponibles'}</span>
+                    </div>
+                    <div className={`amenity ${voyage.bateau.boutique ? 'on' : 'off'}`}>
+                      <span className="amenity-icon">🛍️</span>
+                      <span className="amenity-label">Boutique</span>
+                      <span className="amenity-status">{voyage.bateau.boutique ? 'Sur place' : 'Non disponible'}</span>
                     </div>
                   </div>
                 </div>
+
+                {/* Équipage & sécurité */}
+                <div className="card">
+                  <div className="card-header">
+                    <h2>Équipage & sécurité</h2>
+                  </div>
+                  <div className="crew-grid">
+                    <div className="crew-card">
+                      <div className="crew-icon">👨‍✈️</div>
+                      <div className="crew-label">Capitaine</div>
+                      <div className="crew-value">{voyage.capitaine_nom || 'Communiqué à l’embarquement'}</div>
+                    </div>
+                    <div className="crew-card">
+                      <div className="crew-icon">🧑‍🤝‍🧑</div>
+                      <div className="crew-label">Équipage</div>
+                      <div className="crew-value">
+                        {voyage.equipage_nombre ? `${voyage.equipage_nombre} membres` : 'À bord'}
+                      </div>
+                    </div>
+                    <div className="crew-card">
+                      <div className="crew-icon">🛠️</div>
+                      <div className="crew-label">Dernière révision</div>
+                      <div className="crew-value">{formatShortDate(voyage.bateau.date_derniere_revision)}</div>
+                    </div>
+                    <div className="crew-card">
+                      <div className="crew-icon">📅</div>
+                      <div className="crew-label">Prochaine révision</div>
+                      <div className="crew-value">{formatShortDate(voyage.bateau.date_prochaine_revision)}</div>
+                    </div>
+                  </div>
+                  <div className="safety-note">
+                    <span>🛟</span>
+                    <p>
+                      Ce bateau respecte les normes maritimes en vigueur. Gilets de sauvetage, signalisation
+                      de sécurité et équipage formé sont systématiquement présents à bord.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Politique d'annulation */}
+                <div className="card">
+                  <div className="card-header">
+                    <h2>Politique d’annulation</h2>
+                    <span className="badge-muted">Frais selon le délai</span>
+                  </div>
+                  <ul className="policy-list">
+                    {policiesFrais.map((row) => (
+                      <li key={row.label} className={`policy-row policy-${row.tone}`}>
+                        <span className="policy-label">{row.label}</span>
+                        <span className="policy-frais">{row.frais}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  {voyage.compagnie.politique_annulation && (
+                    <p className="policy-note">{voyage.compagnie.politique_annulation}</p>
+                  )}
+                </div>
+
+                {/* Conseils pour le voyage */}
+                <div className="card tips-card">
+                  <div className="card-header">
+                    <h2>Conseils pour votre voyage</h2>
+                  </div>
+                  <div className="tips-grid">
+                    <div className="tip">
+                      <div className="tip-icon">🛂</div>
+                      <div>
+                        <div className="tip-title">Arrivez en avance</div>
+                        <div className="tip-desc">
+                          Présentez-vous au quai au plus tard 45 min avant le départ pour l’embarquement.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="tip">
+                      <div className="tip-icon">🪪</div>
+                      <div>
+                        <div className="tip-title">Pièce d’identité</div>
+                        <div className="tip-desc">
+                          Une pièce d’identité officielle est exigée pour chaque passager à l’embarquement.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="tip">
+                      <div className="tip-icon">🎒</div>
+                      <div>
+                        <div className="tip-title">Bagages</div>
+                        <div className="tip-desc">
+                          1 bagage cabine + 1 bagage soute inclus. Bagages volumineux à signaler à la
+                          compagnie.
+                        </div>
+                      </div>
+                    </div>
+                    <div className="tip">
+                      <div className="tip-icon">📱</div>
+                      <div>
+                        <div className="tip-title">Billet électronique</div>
+                        <div className="tip-desc">
+                          Votre billet et QR code sont envoyés par email immédiatement après la réservation.
+                        </div>
+                      </div>
+                    </div>
+                    {capaciteTotaleVehicules > 0 && (
+                      <div className="tip">
+                        <div className="tip-icon">🚗</div>
+                        <div>
+                          <div className="tip-title">Véhicules</div>
+                          <div className="tip-desc">
+                            Présentez-vous 60 min avant le départ et munissez-vous de la carte grise.
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    <div className="tip">
+                      <div className="tip-icon">🧥</div>
+                      <div>
+                        <div className="tip-title">Prévoir une veste</div>
+                        <div className="tip-desc">
+                          Les conditions en mer peuvent être plus fraîches qu’à quai, même en été.
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Informations spécifiques au voyage */}
+                <div className="card">
+                  <div className="card-header">
+                    <h2>Informations spécifiques au voyage</h2>
+                  </div>
+                  <div className="info-special">
+                    <span className="info-special-icon">🛂</span>
+                    <div className="info-special-text">
+                      <strong>Présentation au quai conseillée à {computeArrivalCheckIn()}</strong>
+                      <span className="info-special-sub">Soit 45 min avant le départ pour l’embarquement.</span>
+                    </div>
+                  </div>
+                  {voyage.remarques && (
+                    <p className="remark-text">{voyage.remarques}</p>
+                  )}
+                </div>
+
+                {/* Contact compagnie */}
+                {(voyage.compagnie.telephone || voyage.compagnie.email || voyage.compagnie.site_web) && (
+                  <div className="card contact-card">
+                    <div className="card-header">
+                      <h2>Contacter {voyage.compagnie.nom}</h2>
+                    </div>
+                    <div className="contact-grid">
+                      {voyage.compagnie.telephone && (
+                        <a href={`tel:${voyage.compagnie.telephone}`} className="contact-item">
+                          <span className="contact-icon">📞</span>
+                          <div>
+                            <div className="contact-label">Téléphone</div>
+                            <div className="contact-value">{voyage.compagnie.telephone}</div>
+                          </div>
+                        </a>
+                      )}
+                      {voyage.compagnie.email && (
+                        <a href={`mailto:${voyage.compagnie.email}`} className="contact-item">
+                          <span className="contact-icon">✉️</span>
+                          <div>
+                            <div className="contact-label">Email</div>
+                            <div className="contact-value">{voyage.compagnie.email}</div>
+                          </div>
+                        </a>
+                      )}
+                      {voyage.compagnie.site_web && (
+                        <a
+                          href={voyage.compagnie.site_web}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="contact-item"
+                        >
+                          <span className="contact-icon">🌐</span>
+                          <div>
+                            <div className="contact-label">Site web</div>
+                            <div className="contact-value">{voyage.compagnie.site_web}</div>
+                          </div>
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                )}
               </>
             ) : (
               /* Reservation Form */
