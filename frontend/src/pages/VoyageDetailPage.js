@@ -369,28 +369,7 @@ const VoyageDetailPage = () => {
 
   return (
     <div className="voyage-detail-page">
-      <div className="detail-hero">
-        <div className="container">
-          <button onClick={() => navigate(-1)} className="back-btn">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M19 12H5M12 19l-7-7 7-7"/>
-            </svg>
-            Retour
-          </button>
-
-          <div className="hero-content">
-            <div className="hero-badge">
-              <span className={`status-pill status-${voyage.statut}`}>
-                {getStatusLabel(voyage.statut)}
-              </span>
-            </div>
-            <h1 className="hero-title">{voyage.bateau.nom}</h1>
-            <p className="hero-subtitle">Opéré par {voyage.compagnie.nom}</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="container">
+      <div className="container detail-top">
         <div className="detail-layout">
           <div className="detail-main">
             {!showReservationForm ? (
@@ -453,14 +432,40 @@ const VoyageDetailPage = () => {
 
                 {/* Itinéraire */}
                 <div className="card route-card">
-                  <div className="card-header">
-                    <h2>Itinéraire</h2>
-                    <span className="duration-badge">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <circle cx="12" cy="12" r="10"/>
-                        <path d="M12 6v6l4 2"/>
-                      </svg>
-                      {calculateDuration()}
+                  <div className="route-image">
+                    {voyage.bateau.photo_principale ? (
+                      <img
+                        src={voyage.bateau.photo_principale}
+                        alt={voyage.bateau.nom}
+                        className="route-image-photo"
+                      />
+                    ) : (
+                      <div className="route-image-placeholder">
+                        <span className="route-image-emoji">🚢</span>
+                        <div className="route-image-info">
+                          <div className="route-image-name">{voyage.bateau.nom}</div>
+                          <div className="route-image-company">Opéré par {voyage.compagnie.nom}</div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="card-header card-header-route">
+                    <div className="route-header-left">
+                      <button
+                        type="button"
+                        onClick={() => navigate(-1)}
+                        className="back-arrow"
+                        aria-label="Retour"
+                      >
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                          <path d="M19 12H5M12 19l-7-7 7-7"/>
+                        </svg>
+                      </button>
+                      <h2>Itinéraire</h2>
+                    </div>
+                    <span className={`status-pill status-${voyage.statut}`}>
+                      {getStatusLabel(voyage.statut)}
                     </span>
                   </div>
 
@@ -481,9 +486,19 @@ const VoyageDetailPage = () => {
                           🛂 Présentation au quai conseillée à <strong>{computeArrivalCheckIn()}</strong>
                         </div>
                       </div>
+                      <div className="route-endpoint-time">{formatTime(voyage.date_depart_programme)}</div>
+                      <div className="route-endpoint-date">{formatDate(voyage.date_depart_programme)}</div>
                     </div>
 
-                    <div className="timeline-connector"></div>
+                    <div className="route-arrow" aria-hidden="true">
+                      <span className="route-arrow-dot route-arrow-dot-start" />
+                      <span className="route-arrow-line" />
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                        <path d="M5 12h14M12 5l7 7-7 7" />
+                      </svg>
+                      <span className="route-arrow-line" />
+                      <span className="route-arrow-dot route-arrow-dot-end" />
+                    </div>
 
                     <div className="timeline-item">
                       <div className="timeline-marker arrival"></div>
