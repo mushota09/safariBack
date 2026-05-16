@@ -9,6 +9,11 @@ Script pour peupler la base de données avec des données de test
 import asyncio
 from datetime import datetime, timedelta, date
 from sqlalchemy.ext.asyncio import AsyncSession
+from dotenv import load_dotenv
+import os
+
+# Charger les variables d'environnement depuis le fichier .env
+load_dotenv()
 
 from app.database import async_session_maker, engine
 from app.models.base import Base
@@ -65,7 +70,7 @@ async def create_geography(db: AsyncSession):
 
     # Ports avec coordonnées GPS réelles et tous les champs
     port_kalemie = Port(
-        nom="Port de Kalemie",
+        nom="Kalemie",
         code_international="FMI",
         latitude=-5.9475,
         longitude=29.1944,
@@ -78,7 +83,7 @@ async def create_geography(db: AsyncSession):
     )
 
     port_moba = Port(
-        nom="Port de Moba",
+        nom="Moba",
         code_international="MOB",
         latitude=-7.0500,
         longitude=29.7333,
@@ -91,7 +96,7 @@ async def create_geography(db: AsyncSession):
     )
 
     port_uvira = Port(
-        nom="Port d'Uvira",
+        nom="Uvira",
         code_international="UVR",
         latitude=-3.3833,
         longitude=29.1333,
@@ -123,7 +128,7 @@ async def create_companies(db: AsyncSession):
 
     companies = [
         CompagnieBateau(
-            nom="Tanganyika Express",
+            nom="Express company",
             telephone="+243 997 123 456",
             email="contact@tanganyika-express.cd",
             adresse_siege="Avenue Lumumba, Kalemie, RDC",
@@ -137,7 +142,7 @@ async def create_companies(db: AsyncSession):
             politique_annulation="Remboursement à 100% si annulation 48h avant"
         ),
         CompagnieBateau(
-            nom="Lac Kivu Navigation",
+            nom="Navigation company",
             telephone="+243 998 234 567",
             email="info@lac-kivu-nav.cd",
             adresse_siege="Boulevard du Lac, Uvira, RDC",
@@ -151,7 +156,7 @@ async def create_companies(db: AsyncSession):
             politique_annulation="Remboursement à 80% si annulation 24h avant"
         ),
         CompagnieBateau(
-            nom="Safari Maritime",
+            nom="Safari company",
             telephone="+243 999 345 678",
             email="reservation@safari-maritime.cd",
             adresse_siege="Rue du Port, Moba, RDC",
@@ -165,7 +170,7 @@ async def create_companies(db: AsyncSession):
             politique_annulation="Remboursement à 70% si annulation 72h avant"
         ),
         CompagnieBateau(
-            nom="Blue Waters Transport",
+            nom="Waters Transport company",
             telephone="+243 997 456 789",
             email="contact@bluewaters.cd",
             adresse_siege="Avenue du Commerce, Kalemie, RDC",
@@ -179,7 +184,7 @@ async def create_companies(db: AsyncSession):
             politique_annulation="Remboursement à 90% si annulation 48h avant"
         ),
         CompagnieBateau(
-            nom="Grands Lacs Shipping",
+            nom="Lacs Shipping company",
             telephone="+243 998 567 890",
             email="info@grandslacs.cd",
             adresse_siege="Place de l'Indépendance, Uvira, RDC",
