@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 from typing import Optional, List
 from datetime import datetime
-from app.models.reservation import TypeReservation, TypeVehicule, StatutReservation
+from app.models.reservation import TypeReservation, TypeVehicule, StatutReservation, ReservationMode
 from app.models.compagnie import TypeLit
 
 
@@ -58,12 +58,43 @@ class ReservationCancellation(BaseModel):
     raison: Optional[str] = None
 
 
+class ReservationPassagerResponse(BaseModel):
+    id: int
+    nom_complet: str
+    email: Optional[str]
+    telephone: Optional[str]
+    chambre_id: Optional[int]
+    lit_id: Optional[int]
+    is_principal: bool
+    date_enregistrement: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ReservationVehiculeResponse(BaseModel):
+    id: int
+    type_vehicule: TypeVehicule
+    immatriculation: str
+    marque: Optional[str]
+    modele: Optional[str]
+    couleur: Optional[str]
+    annee: Optional[str]
+    proprietaire_nom: Optional[str]
+    proprietaire_telephone: Optional[str]
+    date_enregistrement: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class ReservationResponse(BaseModel):
     id: int
     reference_reservation: str
     utilisateur_id: int
     voyage_id: int
     type_reservation: TypeReservation
+    reservation_mode: Optional[ReservationMode] = None
     niveau_id: Optional[int]
     chambre_id: Optional[int]
     lit_id: Optional[int]
@@ -78,6 +109,8 @@ class ReservationResponse(BaseModel):
     frais_annulation: Optional[float]
     date_annulation: Optional[datetime]
     raison_annulation: Optional[str]
+    passagers_details: List[ReservationPassagerResponse] = []
+    vehicules_details: List[ReservationVehiculeResponse] = []
 
     class Config:
         from_attributes = True
