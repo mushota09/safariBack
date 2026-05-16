@@ -1,4 +1,4 @@
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, List
 from datetime import datetime
 from sqlalchemy import String, Integer, Float, ForeignKey, DateTime, Boolean, Text, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from app.models.compagnie import Niveau, Chambre, Lit
     from app.models.paiement import Paiement
     from app.models.ticket import Ticket
+    from app.models.passager import Passager
+    from app.models.vehicule import VehiculeReservation
 
 
 class TypeReservation(str, enum.Enum):
@@ -80,3 +82,13 @@ class Reservation(Base):
     lit: Mapped["Lit | None"] = relationship("Lit", back_populates="reservations")
     paiement: Mapped["Paiement | None"] = relationship("Paiement", back_populates="reservation", uselist=False)
     ticket: Mapped["Ticket | None"] = relationship("Ticket", back_populates="reservation", uselist=False)
+    passagers: Mapped[List["Passager"]] = relationship(
+        "Passager",
+        back_populates="reservation",
+        cascade="all, delete-orphan",
+    )
+    vehicules: Mapped[List["VehiculeReservation"]] = relationship(
+        "VehiculeReservation",
+        back_populates="reservation",
+        cascade="all, delete-orphan",
+    )

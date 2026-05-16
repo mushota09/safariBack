@@ -17,6 +17,12 @@ class UserLogin(BaseModel):
     password: str
 
 
+class AdminLogin(BaseModel):
+    email: EmailStr
+    password: str
+    company_code: str = Field(..., min_length=2, max_length=50)
+
+
 class Token(BaseModel):
     access_token: str
     refresh_token: str

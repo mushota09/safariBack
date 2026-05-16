@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from app.models.route import Route
     from app.models.voyage import ProgrammeVoyage
     from app.models.promotion import Promotion
+    from app.models.image_bateau import ImageBateau
 
 
 class TypeLit(str, enum.Enum):
@@ -34,6 +35,8 @@ class CompagnieBateau(Base):
     date_creation_compagnie: Mapped[date | None] = mapped_column(Date, nullable=True)
     taux_commission: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     politique_annulation: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Code utilisé par les admins de la compagnie au login backoffice.
+    code_admin: Mapped[str | None] = mapped_column(String(50), unique=True, nullable=True, index=True)
 
     # Relations
     bateaux: Mapped[List["Bateau"]] = relationship("Bateau", back_populates="compagnie")
@@ -88,6 +91,12 @@ class Bateau(Base):
     type_bateau: Mapped["TypeBateau | None"] = relationship("TypeBateau", back_populates="bateaux")
     niveaux: Mapped[List["Niveau"]] = relationship("Niveau", back_populates="bateau", cascade="all, delete-orphan")
     voyages: Mapped[List["ProgrammeVoyage"]] = relationship("ProgrammeVoyage", back_populates="bateau")
+    images: Mapped[List["ImageBateau"]] = relationship(
+        "ImageBateau",
+        back_populates="bateau",
+        cascade="all, delete-orphan",
+        order_by="ImageBateau.ordre",
+    )
 
 
 class Niveau(Base):

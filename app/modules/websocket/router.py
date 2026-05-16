@@ -1,8 +1,26 @@
 import asyncio
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from typing import Annotated
+from fastapi import APIRouter, Depends, WebSocket, WebSocketDisconnect
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.database import get_db
+from app.services.availability_cache import get_voyage_availability
 from app.websocket_manager import websocket_manager
 
 router = APIRouter(tags=["WebSocket"])
+
+
+@router.get("/voyages/{voyage_id}/disponibilite")
+async def get_voyage_disponibilite(
+    voyage_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Disponibilité d'un voyage (cache Redis court TTL + fallback DB)."""
+    data = await get_voyage_availability(db, voyage_id)
+    if data is None:
+        from fastapi import HTTPException, status
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Voyage not found")
+    return data
 
 
 @router.websocket("/ws/disponibilite/{voyage_id}")

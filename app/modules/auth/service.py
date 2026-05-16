@@ -81,16 +81,65 @@ class AuthService:
         return new_user
 
     async def authenticate(self, db: AsyncSession, login_data: UserLogin) -> Optional[Utilisateur]:
-        """Authentifie un utilisateur"""
-        result = await db.execute(
-            select(Utilisateur).where(Utilisateur.username == login_data.username)
+        """Authentifie un utilisateur par email **ou** username.
+
+        Le frontend ne demande désormais que l'email à l'utilisateur final, mais
+        cet ancien identifiant doit continuer à fonctionner pour les comptes
+        existants ou pour l'admin (qui peut aussi venir par /auth/admin/login).
+        """
+        identifier = login_data.username
+        query = select(Utilisateur).where(
+            (Utilisateur.email == identifier) | (Utilisateur.username == identifier)
         )
+        result = await db.execute(query)
         user = result.scalar_one_or_none()
 
         if not user:
             return None
 
         if not self.verify_password(login_data.password, user.hashed_password):
+            return None
+
+        return user
+
+    async def authenticate_admin(
+        self,
+        db: AsyncSession,
+        email: str,
+        password: str,
+        company_code: str,
+    ) -> Optional[Utilisateur]:
+        """Authentifie un admin compagnie via email + mot de passe + code compagnie.
+
+        Le code compagnie doit correspondre à ``CompagnieBateau.code_admin`` de
+        la compagnie à laquelle l'utilisateur est rattaché.
+        """
+        from app.models.compagnie import CompagnieBateau
+        from app.models.utilisateur import RoleUtilisateur
+
+        result = await db.execute(select(Utilisateur).where(Utilisateur.email == email))
+        user = result.scalar_one_or_none()
+        if not user:
+            return None
+
+        role_value = getattr(user.role, "value", user.role) if getattr(user, "role", None) is not None else None
+        is_admin = user.is_superuser or role_value in ("admin_compagnie", "super_admin")
+        if not is_admin:
+            return None
+
+        if not self.verify_password(password, user.hashed_password):
+            return None
+
+        if user.compagnie_id is None:
+            return None
+
+        result_c = await db.execute(
+            select(CompagnieBateau).where(CompagnieBateau.id == user.compagnie_id)
+        )
+        compagnie = result_c.scalar_one_or_none()
+        if not compagnie or not compagnie.code_admin:
+            return None
+        if compagnie.code_admin.strip() != company_code.strip():
             return None
 
         return user

@@ -23,6 +23,8 @@ class Ticket(Base):
 
     numero_ticket: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     qr_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qr_payload: Mapped[str | None] = mapped_column(Text, nullable=True)
+    qr_signature: Mapped[str | None] = mapped_column(String(128), nullable=True)
     pdf_genere: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     date_envoi_email: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
