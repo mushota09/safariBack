@@ -15,6 +15,12 @@ from app.services.paiement_simulateur import paiement_simulateur
 from app.services.qrcode import qrcode_service
 from app.services.pdf_generator import pdf_generator
 from app.services.email import email_service
+from app.services.ticket_signing import (
+    build_global_ticket,
+    build_individual_ticket,
+)
+from app.models.passager import Passager, StatutPassager
+from app.models.vehicule import VehiculeReservation
 from app.redis_client import redis_client
 from app.websocket_manager import websocket_manager
 
@@ -113,13 +119,27 @@ class PaiementService:
             )
             voyage = result_voyage.scalar_one()
 
-            # Invalider le cache
+            # Invalider les caches (recherche + disponibilité d'un voyage)
             await redis_client.delete_pattern("traversees:*")
+            await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
 
             # Broadcast la mise à jour de disponibilité
             await websocket_manager.publish_update(
                 voyage.id,
-                voyage.get_disponibilite()
+                voyage.get_disponibilite(),
+                event="availability",
+            )
+            # Broadcast d'un événement de réservation confirmée (pour le dashboard)
+            await websocket_manager.publish_update(
+                voyage.id,
+                {
+                    "reservation_id": reservation.id,
+                    "reference": reservation.reference_reservation,
+                    "montant_total": reservation.montant_total,
+                    "nombre_passagers": reservation.nombre_passagers,
+                    "vehicule_inclus": reservation.vehicule_inclus,
+                },
+                event="reservation",
             )
         else:
             paiement.statut = StatutPaiement.echoue
@@ -216,22 +236,61 @@ class PaiementService:
         background_tasks: BackgroundTasks,
         user_id: int
     ):
-        """Génère le ticket pour une réservation confirmée"""
-        # Créer le ticket
-        numero_ticket = f"TKT-{uuid.uuid4().hex[:10].upper()}"
+        """Génère le ticket global signé et les tickets individuels passagers/véhicules."""
+        # Ticket global signé
+        numero, _payload, sig_hex, qr_string = build_global_ticket(
+            reservation.id,
+            reservation.reference_reservation,
+        )
 
         ticket = Ticket(
             reservation_id=reservation.id,
-            numero_ticket=numero_ticket,
+            numero_ticket=numero,
+            qr_code=qr_string,
+            qr_payload=qr_string,
+            qr_signature=sig_hex,
             pdf_genere=False,
-            embarque=False
+            embarque=False,
         )
 
         db.add(ticket)
+
+        # Tickets individuels par passager (s'il y en a)
+        result = await db.execute(
+            select(Passager).where(Passager.reservation_id == reservation.id)
+        )
+        passagers = result.scalars().all()
+        for idx, passager in enumerate(passagers):
+            p_num, _, p_sig, p_qr = build_individual_ticket(
+                reservation.id,
+                reservation.reference_reservation,
+                idx,
+                kind="passager",
+            )
+            passager.numero_ticket = p_num
+            passager.qr_payload = p_qr
+            passager.qr_signature = p_sig
+            passager.statut = StatutPassager.confirme
+
+        # Tickets individuels par véhicule
+        result_v = await db.execute(
+            select(VehiculeReservation).where(VehiculeReservation.reservation_id == reservation.id)
+        )
+        for idx, vehic in enumerate(result_v.scalars().all()):
+            v_num, _, v_sig, v_qr = build_individual_ticket(
+                reservation.id,
+                reservation.reference_reservation,
+                idx,
+                kind="vehicule",
+            )
+            vehic.numero_ticket = v_num
+            vehic.qr_payload = v_qr
+            vehic.qr_signature = v_sig
+
         await db.commit()
         await db.refresh(ticket)
 
-        # Générer le QR code et le PDF en arrière-plan
+        # Générer l'image QR et le PDF en arrière-plan
         background_tasks.add_task(
             self._generate_ticket_files,
             db,
@@ -269,13 +328,12 @@ class PaiementService:
         )
         voyage = result.scalar_one()
 
-        # Générer le QR code
+        # Générer l'image QR (le contenu signé est déjà stocké dans qr_payload)
         qr_path = await qrcode_service.generate_ticket_qr_code(
             ticket.numero_ticket,
-            reservation.id
+            reservation.id,
+            signed_payload=ticket.qr_payload,
         )
-
-        ticket.qr_code = qr_path
 
         # Préparer les données pour le PDF
         ticket_data = {

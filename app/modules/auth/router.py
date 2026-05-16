@@ -10,6 +10,7 @@ from app.config import settings
 from app.modules.auth.schemas import (
     UserRegister,
     UserLogin,
+    AdminLogin,
     Token,
     TokenRefresh,
     UserResponse,
@@ -56,6 +57,34 @@ async def login(
 
     tokens = auth_service.create_tokens(user.id)
     return tokens
+
+
+@router.post("/admin/login", response_model=Token)
+async def admin_login(
+    login_data: AdminLogin,
+    db: Annotated[AsyncSession, Depends(get_db)],
+):
+    """Connexion admin / backoffice — email + mot de passe + code compagnie."""
+    user = await auth_service.authenticate_admin(
+        db,
+        login_data.email,
+        login_data.password,
+        login_data.company_code,
+    )
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid admin credentials",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+    if not user.is_active:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Inactive user",
+        )
+
+    return auth_service.create_tokens(user.id)
 
 
 @router.post("/refresh", response_model=Token)

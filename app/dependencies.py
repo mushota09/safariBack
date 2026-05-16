@@ -108,6 +108,39 @@ async def get_current_superuser(
     return current_user
 
 
+async def get_admin_user(
+    current_user: Annotated[Utilisateur, Depends(get_current_user)]
+) -> Utilisateur:
+    """Autorise admin compagnie ou super admin (auth centralisée du backoffice)."""
+    role_value = getattr(current_user, "role", None)
+    is_admin = (
+        current_user.is_superuser
+        or (role_value is not None and getattr(role_value, "value", role_value) in ("admin_compagnie", "super_admin"))
+    )
+    if not is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    return current_user
+
+
+def get_tenant_company_id(
+    current_user: Annotated[Utilisateur, Depends(get_admin_user)]
+) -> int:
+    """Retourne le ``compagnie_id`` du tenant administré.
+
+    Centralisation du contrôle multi-tenant: toute ressource gérée côté admin
+    doit être filtrée par cet identifiant.
+    """
+    if current_user.compagnie_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin user not associated with any company",
+        )
+    return current_user.compagnie_id
+
+
 def create_access_token(data: dict, expires_delta: timedelta = None) -> str:
     """Crée un token JWT d'accès"""
     to_encode = data.copy()
