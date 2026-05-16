@@ -54,11 +54,17 @@ class QRCodeService:
     async def generate_ticket_qr_code(
         self,
         numero_ticket: str,
-        reservation_id: int
+        reservation_id: int,
+        signed_payload: str | None = None,
     ) -> str:
-        """Génère un QR code pour un billet"""
-        # Données à encoder: numéro de ticket + ID de réservation
-        data = f"TICKET:{numero_ticket}:RES:{reservation_id}"
+        """Génère un QR code pour un billet.
+
+        Si ``signed_payload`` est fourni (chaîne déjà signée par
+        ``ticket_signing.sign_payload``), c'est cette chaîne qui est encodée
+        dans le QR. Sinon, on retombe sur l'ancien format non signé pour la
+        rétrocompatibilité.
+        """
+        data = signed_payload if signed_payload else f"TICKET:{numero_ticket}:RES:{reservation_id}"
 
         filename = f"qr_{numero_ticket}"
         return await self.generate_qr_code(data, filename)

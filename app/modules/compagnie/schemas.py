@@ -41,3 +41,41 @@ class CompagnieBateauResponse(CompagnieBateauBase):
 
     class Config:
         from_attributes = True
+
+
+class ImageBateauBase(BaseModel):
+    url: str = Field(..., max_length=500)
+    legende: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    est_principale: bool = False
+    ordre: int = 0
+
+
+class ImageBateauCreate(ImageBateauBase):
+    pass
+
+
+class ImageBateauUpdate(BaseModel):
+    url: Optional[str] = Field(None, max_length=500)
+    legende: Optional[str] = Field(None, max_length=255)
+    description: Optional[str] = None
+    est_principale: Optional[bool] = None
+    ordre: Optional[int] = None
+
+
+class ImageBateauResponse(ImageBateauBase):
+    id: int
+    bateau_id: int
+
+    class Config:
+        from_attributes = True
+
+
+class BateauGalerieResponse(BaseModel):
+    bateau_id: int
+    bateau_nom: str
+    photo_principale: Optional[str]
+    images: List[ImageBateauResponse]
+
+    class Config:
+        from_attributes = True

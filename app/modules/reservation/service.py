@@ -17,6 +17,8 @@ from app.models.reservation import (
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
 from app.models.utilisateur import Utilisateur
 from app.models.compagnie import Bateau, Niveau, Chambre, Lit
+from app.models.passager import Passager, StatutPassager
+from app.models.vehicule import VehiculeReservation
 from app.modules.reservation.schemas import ReservationCreate, ReservationUpdate, ReservationCreateMultiple, PassagerInfo
 from app.redis_client import redis_client
 from app.websocket_manager import websocket_manager
@@ -155,8 +157,9 @@ class ReservationService:
         )
         reservation = refreshed.scalar_one()
 
-        # Invalider le cache des traversées
+        # Invalider les caches (recherche + disponibilité)
         await redis_client.delete_pattern("traversees:*")
+        await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
 
         # Broadcast la mise à jour de disponibilité
         await websocket_manager.publish_update(
@@ -287,8 +290,9 @@ class ReservationService:
 
         await db.commit()
 
-        # Invalider le cache
+        # Invalider les caches
         await redis_client.delete_pattern("traversees:*")
+        await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
 
         # Broadcast la mise à jour
         await websocket_manager.publish_update(
@@ -582,7 +586,7 @@ class ReservationService:
                     ),
                 )
 
-        # Vérifier les conflits de lits (pour passagers)
+        # Vérifier les conflits de lits (pour passagers) + verrouillage atomique
         if reservation_data.passagers:
             lits_utilises = [p.lit_id for p in reservation_data.passagers if p.lit_id]
             if len(lits_utilises) != len(set(lits_utilises)):
@@ -590,6 +594,42 @@ class ReservationService:
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Duplicate bed assignments detected"
                 )
+
+            if lits_utilises:
+                # FOR UPDATE sur les lits demandés (anti-double-booking)
+                locked_lits_q = (
+                    select(Lit).where(Lit.id.in_(lits_utilises)).with_for_update()
+                )
+                locked_lits = (await db.execute(locked_lits_q)).scalars().all()
+                lits_by_id = {l.id: l for l in locked_lits}
+
+                if len(locked_lits) != len(set(lits_utilises)):
+                    raise HTTPException(
+                        status_code=status.HTTP_400_BAD_REQUEST,
+                        detail="One or more requested beds do not exist",
+                    )
+
+                for lit in locked_lits:
+                    if not lit.disponible:
+                        raise HTTPException(
+                            status_code=status.HTTP_409_CONFLICT,
+                            detail=f"Bed {lit.numero_lit} is not available",
+                        )
+
+                # Vérifier qu'aucune autre réservation active n'occupe déjà ces lits
+                conflict_q = select(Reservation).where(
+                    Reservation.voyage_id == reservation_data.voyage_id,
+                    Reservation.lit_id.in_(lits_utilises),
+                    Reservation.statut_reservation.in_(
+                        [StatutReservation.en_attente, StatutReservation.confirme]
+                    ),
+                )
+                conflict = (await db.execute(conflict_q)).scalars().first()
+                if conflict:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail="One or more beds are already reserved",
+                    )
 
         # Vérifier les immatriculations uniques (pour véhicules)
         if reservation_data.vehicules:
@@ -731,8 +771,9 @@ class ReservationService:
         )
         reservation = refreshed.scalar_one()
 
-        # Invalider le cache
+        # Invalider le cache des traversées et de la disponibilité
         await redis_client.delete_pattern("traversees:*")
+        await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
 
         # Broadcast la mise à jour
         await websocket_manager.publish_update(
@@ -741,6 +782,109 @@ class ReservationService:
         )
 
         return reservation
+
+    async def cancel_passager(
+        self,
+        db: AsyncSession,
+        reservation_id: int,
+        passager_id: int,
+        user_id: int,
+        raison: Optional[str] = None,
+    ) -> dict:
+        """Annule un passager spécifique d'une réservation de groupe.
+
+        - Libère la place voyageur correspondante sur le voyage
+        - Recalcule le `montant_total` au prorata (prix de base + extras du passager)
+        - Si c'était le dernier passager et qu'il n'y a pas de véhicule, annule la
+          réservation globale.
+        """
+        reservation = await self.get_reservation(db, reservation_id, user_id)
+
+        if reservation.statut_reservation in (StatutReservation.annule, StatutReservation.termine):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Reservation cannot be modified",
+            )
+
+        result = await db.execute(
+            select(Passager).where(
+                Passager.id == passager_id,
+                Passager.reservation_id == reservation_id,
+            )
+        )
+        passager = result.scalar_one_or_none()
+        if not passager:
+            raise HTTPException(status_code=404, detail="Passenger not found")
+        if passager.statut == StatutPassager.annule:
+            raise HTTPException(status_code=400, detail="Passenger already cancelled")
+        if passager.embarque:
+            raise HTTPException(status_code=400, detail="Passenger already boarded")
+
+        # Charger voyage avec verrou
+        voyage_q = (
+            select(ProgrammeVoyage)
+            .where(ProgrammeVoyage.id == reservation.voyage_id)
+            .with_for_update()
+        )
+        voyage = (await db.execute(voyage_q)).scalar_one()
+
+        passager.statut = StatutPassager.annule
+        passager.date_annulation = datetime.utcnow()
+        passager.raison_annulation = raison
+
+        # Recalculer le montant: déduire la part du passager (prix base + chambre + lit)
+        prix_base = voyage.prix_promotionnel if voyage.prix_promotionnel else voyage.prix_base
+        deduction = float(prix_base)
+        if passager.chambre_id:
+            chambre = (
+                await db.execute(select(Chambre).where(Chambre.id == passager.chambre_id))
+            ).scalar_one_or_none()
+            if chambre:
+                deduction += float(chambre.prix_base)
+        if passager.lit_id:
+            lit = (
+                await db.execute(select(Lit).where(Lit.id == passager.lit_id))
+            ).scalar_one_or_none()
+            if lit:
+                deduction += float(lit.prix_supplementaire)
+
+        reservation.montant_total = max(0.0, round(float(reservation.montant_total) - deduction, 2))
+        reservation.nombre_passagers = max(0, reservation.nombre_passagers - 1)
+        voyage.places_vendues_passagers = max(0, voyage.places_vendues_passagers - 1)
+
+        # Si plus aucun passager actif et pas de véhicule actif, annuler la réservation
+        actifs = await db.execute(
+            select(Passager).where(
+                Passager.reservation_id == reservation_id,
+                Passager.statut != StatutPassager.annule,
+            )
+        )
+        nb_actifs = len(actifs.scalars().all())
+        vehic_actifs = await db.execute(
+            select(VehiculeReservation).where(
+                VehiculeReservation.reservation_id == reservation_id,
+                VehiculeReservation.annule.is_(False),
+            )
+        )
+        nb_vehic = len(vehic_actifs.scalars().all())
+        if nb_actifs == 0 and nb_vehic == 0:
+            reservation.statut_reservation = StatutReservation.annule
+            reservation.date_annulation = datetime.utcnow()
+            reservation.raison_annulation = raison or "All passengers cancelled"
+
+        await db.commit()
+
+        await redis_client.delete_pattern("traversees:*")
+        await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
+        await websocket_manager.publish_update(voyage.id, voyage.get_disponibilite())
+
+        return {
+            "message": "Passenger cancelled successfully",
+            "passager_id": passager.id,
+            "deduction": deduction,
+            "montant_total": reservation.montant_total,
+            "reservation_annulee": reservation.statut_reservation == StatutReservation.annule,
+        }
 
 
 reservation_service = ReservationService()

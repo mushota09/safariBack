@@ -2,6 +2,7 @@
 from app.models.base import Base, ModeleDeBase
 from app.models.utilisateur import Utilisateur
 from app.models.compagnie import CompagnieBateau, TypeBateau, Bateau, Niveau, Chambre, Lit, TypeLit
+from app.models.image_bateau import ImageBateau
 from app.models.geographie import Pays, Ville, Port
 from app.models.route import Route, TarifSaisonnier, TypeSaison
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
@@ -31,6 +32,7 @@ __all__ = [
     "Chambre",
     "Lit",
     "TypeLit",
+    "ImageBateau",
     "Pays",
     "Ville",
     "Port",
@@ -46,6 +48,9 @@ __all__ = [
     "StatutReservation",
     "TypeReservation",
     "TypeVehicule",
+    "Passager",
+    "StatutPassager",
+    "VehiculeReservation",
     "Ticket",
     "Paiement",
     "StatutPaiement",

@@ -116,3 +116,21 @@ async def create_reservation_multiple(
 ):
     """Crée une réservation pour plusieurs passagers"""
     return await reservation_service.create_reservation_multiple(db, current_user.id, reservation_data)
+
+
+@router.post("/{reservation_id}/passagers/{passager_id}/cancel")
+async def cancel_passager(
+    reservation_id: int,
+    passager_id: int,
+    cancellation_data: ReservationCancellation,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Utilisateur, Depends(get_current_user)],
+):
+    """Annule un passager individuel d'une réservation de groupe."""
+    return await reservation_service.cancel_passager(
+        db,
+        reservation_id,
+        passager_id,
+        current_user.id,
+        cancellation_data.raison,
+    )

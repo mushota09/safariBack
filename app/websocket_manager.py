@@ -56,13 +56,19 @@ class WebSocketManager:
         for conn in disconnected:
             self.disconnect(conn, voyage_id)
 
-    async def publish_update(self, voyage_id: int, data: dict):
-        """Publie une mise à jour via Redis pour le scaling horizontal"""
+    async def publish_update(self, voyage_id: int, data: dict, event: str = "availability"):
+        """Publie une mise à jour via Redis pour le scaling horizontal.
+
+        ``event`` permet d'étiqueter le type de notification: ``availability``
+        (mise à jour de places), ``reservation`` (réservation validée),
+        ``voyage_status`` (changement de statut du voyage).
+        """
         channel = f"voyage_updates:{voyage_id}"
         message = {
             "voyage_id": voyage_id,
+            "event": event,
             "data": data,
-            "timestamp": asyncio.get_event_loop().time()
+            "timestamp": asyncio.get_event_loop().time(),
         }
         await redis_client.publish(channel, message)
 

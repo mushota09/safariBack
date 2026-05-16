@@ -12,6 +12,8 @@ if TYPE_CHECKING:
     from app.models.compagnie import Niveau, Chambre, Lit
     from app.models.paiement import Paiement
     from app.models.ticket import Ticket
+    from app.models.passager import Passager
+    from app.models.vehicule import VehiculeReservation
 
 
 class ReservationMode(str, enum.Enum):
