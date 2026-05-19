@@ -77,6 +77,9 @@ class Passager(Base):
         DateTime(timezone=True), default=datetime.utcnow, nullable=False
     )
 
-    reservation: Mapped["Reservation"] = relationship("Reservation", back_populates="passagers")
+    # Pas de back_populates direct sur Reservation pour éviter de dupliquer
+    # la relation `passagers_details` (qui utilise ReservationPassager).
+    # Cette relation reste utilisable par requête explicite.
+    reservation: Mapped["Reservation"] = relationship("Reservation")
     chambre: Mapped["Chambre | None"] = relationship("Chambre")
     lit: Mapped["Lit | None"] = relationship("Lit")

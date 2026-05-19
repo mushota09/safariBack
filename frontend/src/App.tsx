@@ -28,6 +28,7 @@ import AgentLayout from './pages/agent/AgentLayout';
 import AgentScanner from './pages/agent/Scanner';
 
 import { SafariLogo } from './components/SafariLogo';
+import { AuthProvider } from './contexts/AuthContext';
 
 function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
@@ -174,11 +175,12 @@ function Footer() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <div className="min-h-screen flex flex-col">
-        <Header />
-        <main className="flex-grow">
-          <Routes>
+    <AuthProvider>
+      <BrowserRouter>
+        <div className="min-h-screen flex flex-col">
+          <Header />
+          <main className="flex-grow">
+            <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/voyage/:id" element={<VoyageDetailPage />} />
             <Route path="/reservation/:voyageId" element={<ReservationPage />} />
@@ -220,10 +222,11 @@ export default function App() {
                 </AgentLayout>
               } 
             />
-          </Routes>
-        </main>
-        <Footer />
-      </div>
-    </BrowserRouter>
+            </Routes>
+          </main>
+          <Footer />
+        </div>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }

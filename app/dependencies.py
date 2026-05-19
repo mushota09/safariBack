@@ -171,14 +171,45 @@ def create_refresh_token(data: dict) -> str:
     return encoded_jwt
 
 
-async def verify_api_key(x_api_key: Annotated[str | None, Header()] = None) -> bool:
-    """Vérifie la clé API pour les endpoints d'embarquement"""
-    # En production, stocker les clés API dans la base de données
-    valid_api_keys = ["admin_api_key_changez_moi"]
+async def verify_api_key(
+    x_api_key: Annotated[str | None, Header()] = None,
+    authorization: Annotated[str | None, Header()] = None,
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+) -> bool:
+    """Vérifie l'autorisation pour les endpoints d'embarquement.
 
-    if not x_api_key or x_api_key not in valid_api_keys:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid API key"
-        )
-    return True
+    Acceptable :
+    - clé API (header ``X-API-Key``) — pour les terminaux internes (kiosques) ;
+    - **OU** un JWT valide d'un utilisateur authentifié (admin compagnie,
+      super admin, ou agent embarquement). C'est cette voie qui est utilisée
+      depuis le frontend agent (mobile).
+    """
+    valid_api_keys = ["admin_api_key_changez_moi"]
+    if x_api_key and x_api_key in valid_api_keys:
+        return True
+
+    # Fallback : JWT
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1]
+        try:
+            payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+            user_id_str = payload.get("sub")
+            if not user_id_str:
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+            user_id = int(user_id_str)
+        except (JWTError, ValueError):
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
+
+        if db is None:
+            # En théorie inatteignable car FastAPI injecte toujours db
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="DB unavailable")
+        result = await db.execute(select(Utilisateur).where(Utilisateur.id == user_id))
+        user = result.scalar_one_or_none()
+        if not user or not user.is_active:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Inactive or unknown user")
+        return True
+
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Authentication required (API key or Bearer token)",
+    )

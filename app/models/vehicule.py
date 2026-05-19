@@ -42,4 +42,6 @@ class VehiculeReservation(Base):
     annule: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     date_annulation: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    reservation: Mapped["Reservation"] = relationship("Reservation", back_populates="vehicules")
+    # Pas de back_populates direct (cf. note dans Passager) — la relation
+    # `vehicules_details` couvre déjà le besoin côté Reservation.
+    reservation: Mapped["Reservation"] = relationship("Reservation")
