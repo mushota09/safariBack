@@ -1,25 +1,49 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
-import { Mail, Lock, Eye, EyeOff, Anchor, ArrowRight, ChevronLeft } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, Anchor, ArrowRight, ChevronLeft, AlertCircle } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { cn } from '../lib/utils';
 
 import { SafariLogo } from '../components/SafariLogo';
 import googleLogo from '../assets/logo_google.png';
+import { useAuth } from '../contexts/AuthContext';
+import { ApiError } from '../services/api';
+import { authService } from '../services/authService';
 
 export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [error, setError] = useState<string | null>(null);
     const navigate = useNavigate();
+    const { login } = useAuth();
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(null);
         setLoading(true);
-        // Simulate auth
-        setTimeout(() => {
+        try {
+            // Le backend accepte username OU email dans le champ `username`
+            await login(email, password);
             navigate('/');
+        } catch (err: any) {
+            const msg = err instanceof ApiError
+                ? (typeof err.detail === 'string' ? err.detail : err.detail?.detail || err.message)
+                : (err?.message || 'Identifiants invalides');
+            setError(msg);
+        } finally {
             setLoading(false);
-        }, 1000);
+        }
+    };
+
+    const handleGoogleLogin = async () => {
+        try {
+            const url = await authService.googleLoginUrl();
+            window.location.href = url;
+        } catch (err: any) {
+            setError(err?.message || 'Google indisponible');
+        }
     };
 
     return (
@@ -85,8 +109,10 @@ export default function LoginPage() {
                             <div className="relative group">
                                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
                                 <input 
-                                    type="email" 
-                                    placeholder="nom@exemple.com"
+                                    type="text" 
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
+                                    placeholder="nom@exemple.com ou identifiant"
                                     className="w-full pl-12 pr-4 py-5 bg-white/5 border-2 border-white/10 rounded-3xl outline-none focus:border-accent text-white transition-all font-bold placeholder:text-white/10"
                                     required
                                 />
@@ -102,6 +128,8 @@ export default function LoginPage() {
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
                                 <input 
                                     type={showPassword ? "text" : "password"} 
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
                                     placeholder="••••••••"
                                     className="w-full pl-12 pr-12 py-5 bg-white/5 border-2 border-white/10 rounded-3xl outline-none focus:border-accent text-white transition-all font-bold placeholder:text-white/10"
                                     required
@@ -115,6 +143,13 @@ export default function LoginPage() {
                                 </button>
                             </div>
                         </div>
+
+                        {error && (
+                            <div className="flex items-start gap-3 p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-200 text-sm font-bold">
+                                <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+                                <span>{error}</span>
+                            </div>
+                        )}
 
                         <button 
                             type="submit"
@@ -131,7 +166,7 @@ export default function LoginPage() {
                         <div className="relative flex justify-center text-[10px] uppercase font-black text-white/20 tracking-widest"><span className="bg-[#010312] px-4">Ou continuer avec</span></div>
                     </div>
 
-                    <button className="w-full bg-white/5 border-2 border-white/10 text-white py-5 rounded-3xl font-bold flex items-center justify-center gap-4 hover:border-white/20 transition-all shadow-sm">
+                    <button type="button" onClick={handleGoogleLogin} className="w-full bg-white/5 border-2 border-white/10 text-white py-5 rounded-3xl font-bold flex items-center justify-center gap-4 hover:border-white/20 transition-all shadow-sm">
                         <img src={googleLogo} alt="Google" className={cn("w-5 h-5 object-contain")} />
                         Continuer avec Google
                     </button>

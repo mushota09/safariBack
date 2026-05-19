@@ -793,10 +793,13 @@ class ReservationService:
     ) -> dict:
         """Annule un passager spécifique d'une réservation de groupe.
 
-        - Libère la place voyageur correspondante sur le voyage
-        - Recalcule le `montant_total` au prorata (prix de base + extras du passager)
-        - Si c'était le dernier passager et qu'il n'y a pas de véhicule, annule la
-          réservation globale.
+        Travaille sur la table `reservation_passager` (modèle `ReservationPassager`)
+        qui est celle effectivement remplie par `create_reservation_multiple`.
+
+        - Libère la place voyageur correspondante sur le voyage.
+        - Recalcule le `montant_total` au prorata (prix de base + extras du passager).
+        - Si c'était le dernier passager et qu'il n'y a pas de véhicule actif,
+          annule la réservation globale.
         """
         reservation = await self.get_reservation(db, reservation_id, user_id)
 
@@ -807,18 +810,14 @@ class ReservationService:
             )
 
         result = await db.execute(
-            select(Passager).where(
-                Passager.id == passager_id,
-                Passager.reservation_id == reservation_id,
+            select(ReservationPassager).where(
+                ReservationPassager.id == passager_id,
+                ReservationPassager.reservation_id == reservation_id,
             )
         )
         passager = result.scalar_one_or_none()
         if not passager:
             raise HTTPException(status_code=404, detail="Passenger not found")
-        if passager.statut == StatutPassager.annule:
-            raise HTTPException(status_code=400, detail="Passenger already cancelled")
-        if passager.embarque:
-            raise HTTPException(status_code=400, detail="Passenger already boarded")
 
         # Charger voyage avec verrou
         voyage_q = (
@@ -827,10 +826,6 @@ class ReservationService:
             .with_for_update()
         )
         voyage = (await db.execute(voyage_q)).scalar_one()
-
-        passager.statut = StatutPassager.annule
-        passager.date_annulation = datetime.utcnow()
-        passager.raison_annulation = raison
 
         # Recalculer le montant: déduire la part du passager (prix base + chambre + lit)
         prix_base = voyage.prix_promotionnel if voyage.prix_promotionnel else voyage.prix_base
@@ -848,22 +843,24 @@ class ReservationService:
             if lit:
                 deduction += float(lit.prix_supplementaire)
 
+        # On supprime physiquement le passager (la table n'a pas de colonne statut).
+        await db.delete(passager)
+
         reservation.montant_total = max(0.0, round(float(reservation.montant_total) - deduction, 2))
         reservation.nombre_passagers = max(0, reservation.nombre_passagers - 1)
         voyage.places_vendues_passagers = max(0, voyage.places_vendues_passagers - 1)
 
         # Si plus aucun passager actif et pas de véhicule actif, annuler la réservation
+        await db.flush()
         actifs = await db.execute(
-            select(Passager).where(
-                Passager.reservation_id == reservation_id,
-                Passager.statut != StatutPassager.annule,
+            select(ReservationPassager).where(
+                ReservationPassager.reservation_id == reservation_id,
             )
         )
         nb_actifs = len(actifs.scalars().all())
         vehic_actifs = await db.execute(
-            select(VehiculeReservation).where(
-                VehiculeReservation.reservation_id == reservation_id,
-                VehiculeReservation.annule.is_(False),
+            select(ReservationVehicule).where(
+                ReservationVehicule.reservation_id == reservation_id,
             )
         )
         nb_vehic = len(vehic_actifs.scalars().all())
@@ -880,7 +877,7 @@ class ReservationService:
 
         return {
             "message": "Passenger cancelled successfully",
-            "passager_id": passager.id,
+            "passager_id": passager_id,
             "deduction": deduction,
             "montant_total": reservation.montant_total,
             "reservation_annulee": reservation.statut_reservation == StatutReservation.annule,

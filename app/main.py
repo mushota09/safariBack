@@ -16,6 +16,7 @@ from app.models import *
 from app.modules.auth.router import router as auth_router
 from app.modules.compagnie.router import router as compagnie_router
 from app.modules.compagnie.galerie_router import router as galerie_bateau_router
+from app.modules.bateau.router import router as bateau_router
 from app.modules.traversee.router import router as traversee_router
 from app.modules.reservation.router import router as reservation_router
 from app.modules.paiement.router import router as paiement_router
@@ -109,6 +110,7 @@ async def health_check():
 # Enregistrer les routers
 app.include_router(auth_router)
 app.include_router(compagnie_router)
+app.include_router(bateau_router)
 app.include_router(galerie_bateau_router)
 app.include_router(traversee_router)
 app.include_router(reservation_router)

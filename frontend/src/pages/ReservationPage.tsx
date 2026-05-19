@@ -7,10 +7,20 @@ import {
     Bed, Info, ShieldCheck, Timer, Camera
 } from 'lucide-react';
 import { cn, formatCurrency } from '../lib/utils';
-import { reservationService } from '../services/reservationService';
+import { reservationService, type ReservationMode } from '../services/reservationService';
+import { useAuth } from '../contexts/AuthContext';
+import { ApiError } from '../services/api';
 
 type ReservationType = 'passager' | 'vehicule';
 type ForWhom = 'moi' | 'moi_autres' | 'autres' | 'personne';
+
+/** Map UI -> reservation_mode backend */
+function toReservationMode(type: ReservationType, forWhom: ForWhom): ReservationMode {
+    if (type === 'vehicule') return 'vehicule';
+    if (forWhom === 'moi') return 'moi_meme';
+    if (forWhom === 'moi_autres') return 'moi_et_autres';
+    return 'les_autres';
+}
 
 export default function ReservationPage() {
     const { voyageId } = useParams();
@@ -66,6 +76,8 @@ export default function ReservationPage() {
     const [timeLeft, setTimeLeft] = useState(600); // 10 minutes
 
     const [isProcessing, setIsProcessing] = useState(false);
+    const [submitError, setSubmitError] = useState<string | null>(null);
+    const { isAuthenticated, user } = useAuth();
 
     useEffect(() => {
         const timer = setInterval(() => {
@@ -73,6 +85,24 @@ export default function ReservationPage() {
         }, 1000);
         return () => clearInterval(timer);
     }, []);
+
+    // Préremplir le passager principal depuis l'utilisateur connecté
+    useEffect(() => {
+        if (user && (forWhom === 'moi' || forWhom === 'moi_autres')) {
+            setPassengers(prev => {
+                if (!prev.length) return prev;
+                const next = [...prev];
+                next[0] = {
+                    ...next[0],
+                    name: user.nom_complet || user.email,
+                    email: user.email,
+                    phone: user.numero_telephone || next[0].phone,
+                };
+                return next;
+            });
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [user, forWhom]);
 
     const formatTime = (seconds: number) => {
         const mins = Math.floor(seconds / 60);
@@ -1006,6 +1036,11 @@ export default function ReservationPage() {
                                             </div>
                                         </div>
 
+                                        {submitError && (
+                                            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-300 text-[11px] font-bold uppercase tracking-widest">
+                                                {submitError}
+                                            </div>
+                                        )}
                                         <button 
                                             disabled={isProcessing}
                                             className={cn(
@@ -1014,30 +1049,84 @@ export default function ReservationPage() {
                                                     ? "bg-white/10 text-white/20 cursor-wait" 
                                                     : "bg-accent text-primary hover:bg-white hover:scale-[1.02] shadow-[0_15px_40px_rgba(222,181,7,0.15)] active:scale-[0.98]"
                                             )}
-                                            onClick={() => {
-                                                setIsProcessing(true);
-                                                const resId = `RES-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-                                                
-                                                const reservationData = {
-                                                    id: resId,
-                                                    voyageId: voyageId || 'V092',
-                                                    type: reservationType,
-                                                    forWhom: forWhom,
-                                                    passengers: passengers,
-                                                    vessel: 'M/V SAFARI',
-                                                    vehicles: vehicles,
-                                                    recipient: forWhom === 'personne' ? recipient : null,
-                                                    date: new Date().toLocaleDateString(),
-                                                    totalAmount: (passengersCount * 45) + (reservationType === 'vehicule' ? vehicles.length * 150 : 0) + passengers.reduce((s, p) => s + (p.selectedRoom ? (roomsData.find(r => r.id === p.selectedRoom)?.price || 0) + (bedsData[p.selectedRoom!]?.find(b => b.id === p.selectedBed)?.price || 0) : 0), 0),
-                                                    status: 'PAYÉ' as const,
-                                                    paymentMethod: paymentMethod
-                                                };
+                                            onClick={async () => {
+                                                setSubmitError(null);
 
-                                                reservationService.saveReservation(reservationData);
-                                                
-                                                setTimeout(() => {
-                                                    navigate(`/reservation-details/${resId}`);
-                                                }, 2000);
+                                                if (!isAuthenticated) {
+                                                    navigate('/login');
+                                                    return;
+                                                }
+
+                                                const voyageIdNum = Number(voyageId);
+                                                if (!voyageIdNum || isNaN(voyageIdNum)) {
+                                                    setSubmitError("Voyage invalide.");
+                                                    return;
+                                                }
+
+                                                setIsProcessing(true);
+                                                try {
+                                                    const mode = toReservationMode(reservationType, forWhom);
+
+                                                    if (reservationType === 'passager') {
+                                                        const passagersPayload = passengers
+                                                            .filter(p => p.name?.trim())
+                                                            .map(p => ({
+                                                                nom_complet: p.name,
+                                                                email: p.email || undefined,
+                                                                telephone: p.phone || undefined,
+                                                                // Conversion id ui -> id backend si on a un id numérique
+                                                                chambre_id: undefined as number | undefined,
+                                                                lit_id: undefined as number | undefined,
+                                                            }));
+
+                                                        const created = await reservationService.createMultiple({
+                                                            voyage_id: voyageIdNum,
+                                                            type_reservation: 'passager',
+                                                            reservation_mode: mode,
+                                                            passagers: passagersPayload,
+                                                        });
+                                                        navigate(`/reservation-details/${created.id}`);
+                                                    } else {
+                                                        // Réservation véhicule
+                                                        const vehiculesPayload = vehicles
+                                                            .filter(v => v.plate?.trim())
+                                                            .map(v => ({
+                                                                type_vehicule: (v.type || 'voiture') as any,
+                                                                immatriculation: v.plate,
+                                                                modele: v.model || undefined,
+                                                                couleur: v.color || undefined,
+                                                                proprietaire_nom: forWhom === 'personne' ? recipient.name : (user?.nom_complet || undefined),
+                                                                proprietaire_telephone: forWhom === 'personne' ? recipient.phone : (user?.numero_telephone || undefined),
+                                                            }));
+
+                                                        const passagersPayload = forWhom === 'moi'
+                                                            ? passengers
+                                                                .filter(p => p.name?.trim())
+                                                                .map(p => ({
+                                                                    nom_complet: p.name,
+                                                                    email: p.email || undefined,
+                                                                    telephone: p.phone || undefined,
+                                                                }))
+                                                            : undefined;
+
+                                                        const created = await reservationService.createMultiple({
+                                                            voyage_id: voyageIdNum,
+                                                            type_reservation: 'vehicule',
+                                                            reservation_mode: 'vehicule',
+                                                            vehicules: vehiculesPayload,
+                                                            passagers: passagersPayload,
+                                                            vehicule_inclus: true,
+                                                        });
+                                                        navigate(`/reservation-details/${created.id}`);
+                                                    }
+                                                } catch (err: any) {
+                                                    const msg = err instanceof ApiError
+                                                        ? (typeof err.detail === 'string' ? err.detail : err.detail?.detail || err.message)
+                                                        : (err?.message || 'Erreur lors de la réservation');
+                                                    setSubmitError(msg);
+                                                } finally {
+                                                    setIsProcessing(false);
+                                                }
                                             }}
                                         >
                                             {isProcessing ? (
