@@ -68,6 +68,8 @@ class TraverseeResponse(BaseModel):
     compagnie: CompagnieInfo
     date_depart_programme: datetime
     date_arrivee_programmee: datetime
+    date_arrivee_estimee: Optional[datetime] = None  # Alias pour date_arrivee_programmee
+    duree_estimee_heures: Optional[float] = None  # Calculé automatiquement
     prix_base: float
     prix_promotionnel: Optional[float] = None
     statut: str
@@ -84,3 +86,14 @@ class TraverseeResponse(BaseModel):
 
     class Config:
         from_attributes = True
+
+    def model_post_init(self, __context):
+        """Calcule les champs dérivés après initialisation"""
+        # Alias pour date_arrivee_estimee
+        if not self.date_arrivee_estimee:
+            self.date_arrivee_estimee = self.date_arrivee_programmee
+
+        # Calcul de la durée estimée en heures
+        if not self.duree_estimee_heures and self.date_arrivee_programmee and self.date_depart_programme:
+            delta = self.date_arrivee_programmee - self.date_depart_programme
+            self.duree_estimee_heures = delta.total_seconds() / 3600

@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { BrowserRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
-import { Ship, Calendar, User, LayoutDashboard, LogIn, Menu, X, Anchor } from 'lucide-react';
+import { BrowserRouter, Routes, Route, Link, useLocation, useNavigate } from 'react-router-dom';
+import { Ship, Calendar, User, LayoutDashboard, LogIn, Menu, X, Anchor, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { cn } from './lib/utils';
+import { authService } from './services/authService';
 
 // Pages (to be created)
 import HomePage from './pages/HomePage';
@@ -14,6 +15,8 @@ import ReservationDetailsPage from './pages/ReservationDetailsPage';
 import CancelReservationPage from './pages/CancelReservationPage';
 import RegisterPage from './pages/RegisterPage';
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import CompleteProfilePage from './pages/CompleteProfilePage';
+import AuthCallbackPage from './pages/AuthCallbackPage';
 import ProfilePage from './pages/ProfilePage';
 import BackofficeLoginPage from './pages/BackofficeLoginPage';
 import AdminLayout from './pages/admin/AdminLayout';
@@ -32,7 +35,11 @@ import { SafariLogo } from './components/SafariLogo';
 function Header() {
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     const handleScroll = () => setIsScrolled(window.scrollY > 20);
@@ -40,7 +47,40 @@ function Header() {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const hideOnPaths = ['/login', '/register', '/forgot-password', '/backoffice', '/admin', '/agent'];
+  // Load current user
+  useEffect(() => {
+    const loadUser = async () => {
+      // Don't load user on auth pages where tokens are being processed
+      const authProcessingPaths = ['/complete-profile', '/auth/callback', '/login', '/register', '/forgot-password'];
+      if (authProcessingPaths.some(path => location.pathname.startsWith(path))) {
+        setIsLoadingUser(false);
+        return;
+      }
+
+      if (authService.isAuthenticated()) {
+        try {
+          const user = await authService.getCurrentUser();
+          setCurrentUser(user);
+        } catch (error) {
+          console.error('Failed to load user:', error);
+          // Token might be expired or invalid, clear it
+          authService.logout();
+        }
+      }
+      setIsLoadingUser(false);
+    };
+
+    loadUser();
+  }, [location.pathname]);
+
+  const handleLogout = () => {
+    authService.logout();
+    setCurrentUser(null);
+    setIsProfileMenuOpen(false);
+    navigate('/');
+  };
+
+  const hideOnPaths = ['/login', '/register', '/forgot-password', '/complete-profile', '/auth/callback', '/backoffice', '/admin', '/agent'];
   if (hideOnPaths.some(path => location.pathname.startsWith(path))) return null;
 
   const navLinks = [
@@ -49,8 +89,18 @@ function Header() {
     { name: 'Profil', path: '/profile', icon: User },
   ];
 
+  // Get user initials
+  const getUserInitials = (name: string) => {
+    if (!name) return 'U';
+    const parts = name.split(' ');
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase();
+    }
+    return name[0].toUpperCase();
+  };
+
   return (
-    <header 
+    <header
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300 px-6 py-4 flex items-center justify-between",
         isScrolled ? "bg-primary shadow-lg py-3" : "bg-transparent py-5"
@@ -62,7 +112,7 @@ function Header() {
 
       <nav className="hidden md:flex items-center gap-8">
         {navLinks.map((link) => (
-          <Link 
+          <Link
             key={link.path}
             to={link.path}
             className={cn(
@@ -74,13 +124,104 @@ function Header() {
             {link.name}
           </Link>
         ))}
-        <Link 
-          to="/login"
-          className="bg-accent text-primary px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-white transition-colors"
-        >
-          <LogIn className="w-4 h-4" />
-          Connexion
-        </Link>
+
+        {!isLoadingUser && (
+          <>
+            {currentUser ? (
+              <div className="relative">
+                <button
+                  onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
+                  className="flex items-center gap-2 hover:opacity-80 transition-opacity"
+                >
+                  {currentUser.photo_profil ? (
+                    <img
+                      src={currentUser.photo_profil}
+                      alt={currentUser.nom_complet || 'User'}
+                      className="w-10 h-10 rounded-full object-cover border-2 border-accent"
+                    />
+                  ) : (
+                    <div className="w-10 h-10 rounded-full bg-accent text-primary flex items-center justify-center font-black text-sm border-2 border-accent">
+                      {getUserInitials(currentUser.nom_complet || currentUser.email)}
+                    </div>
+                  )}
+                </button>
+
+                {/* Profile dropdown menu */}
+                <AnimatePresence>
+                  {isProfileMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -10 }}
+                      className="absolute right-0 mt-2 w-64 bg-primary border border-white/10 rounded-2xl shadow-2xl overflow-hidden"
+                    >
+                      <div className="p-4 border-b border-white/10">
+                        <div className="flex items-center gap-3">
+                          {currentUser.photo_profil ? (
+                            <img
+                              src={currentUser.photo_profil}
+                              alt={currentUser.nom_complet || 'User'}
+                              className="w-12 h-12 rounded-full object-cover"
+                            />
+                          ) : (
+                            <div className="w-12 h-12 rounded-full bg-accent text-primary flex items-center justify-center font-black text-lg">
+                              {getUserInitials(currentUser.nom_complet || currentUser.email)}
+                            </div>
+                          )}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-white font-bold text-sm truncate">
+                              {currentUser.nom_complet || 'Utilisateur'}
+                            </p>
+                            <p className="text-white/40 text-xs truncate">
+                              {currentUser.email}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="p-2">
+                        <Link
+                          to="/profile"
+                          onClick={() => setIsProfileMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 text-white/80 hover:bg-white/5 rounded-xl transition-colors"
+                        >
+                          <User className="w-4 h-4" />
+                          <span className="text-sm font-medium">Mon Profil</span>
+                        </Link>
+                        <Link
+                          to="/my-reservations"
+                          onClick={() => setIsProfileMenuOpen(false)}
+                          className="flex items-center gap-3 px-4 py-3 text-white/80 hover:bg-white/5 rounded-xl transition-colors"
+                        >
+                          <LayoutDashboard className="w-4 h-4" />
+                          <span className="text-sm font-medium">Mes Réservations</span>
+                        </Link>
+                      </div>
+
+                      <div className="p-2 border-t border-white/10">
+                        <button
+                          onClick={handleLogout}
+                          className="w-full flex items-center gap-3 px-4 py-3 text-red-400 hover:bg-red-500/10 rounded-xl transition-colors"
+                        >
+                          <LogOut className="w-4 h-4" />
+                          <span className="text-sm font-medium">Déconnexion</span>
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            ) : (
+              <Link
+                to="/login"
+                className="bg-accent text-primary px-6 py-2.5 rounded-xl font-bold text-sm flex items-center gap-2 hover:bg-white transition-colors"
+              >
+                <LogIn className="w-4 h-4" />
+                Connexion
+              </Link>
+            )}
+          </>
+        )}
       </nav>
 
       <button className="md:hidden text-white" onClick={() => setIsMenuOpen(!isMenuOpen)}>
@@ -96,8 +237,32 @@ function Header() {
             exit={{ opacity: 0, y: -20 }}
             className="absolute top-full left-0 right-0 bg-primary border-t border-white/10 p-6 flex flex-col gap-4 md:hidden shadow-2xl"
           >
+            {currentUser && (
+              <div className="flex items-center gap-3 p-4 bg-white/5 rounded-xl mb-2">
+                {currentUser.photo_profil ? (
+                  <img
+                    src={currentUser.photo_profil}
+                    alt={currentUser.nom_complet || 'User'}
+                    className="w-12 h-12 rounded-full object-cover"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-full bg-accent text-primary flex items-center justify-center font-black text-lg">
+                    {getUserInitials(currentUser.nom_complet || currentUser.email)}
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-bold text-sm truncate">
+                    {currentUser.nom_complet || 'Utilisateur'}
+                  </p>
+                  <p className="text-white/40 text-xs truncate">
+                    {currentUser.email}
+                  </p>
+                </div>
+              </div>
+            )}
+
             {navLinks.map((link) => (
-              <Link 
+              <Link
                 key={link.path}
                 to={link.path}
                 onClick={() => setIsMenuOpen(false)}
@@ -107,13 +272,24 @@ function Header() {
                 {link.name}
               </Link>
             ))}
-            <Link 
-              to="/login"
-              onClick={() => setIsMenuOpen(false)}
-              className="bg-accent text-primary p-4 rounded-xl font-bold text-center mt-4"
-            >
-              Connexion
-            </Link>
+
+            {currentUser ? (
+              <button
+                onClick={handleLogout}
+                className="bg-red-500/20 text-red-400 p-4 rounded-xl font-bold text-center mt-4 flex items-center justify-center gap-2"
+              >
+                <LogOut className="w-5 h-5" />
+                Déconnexion
+              </button>
+            ) : (
+              <Link
+                to="/login"
+                onClick={() => setIsMenuOpen(false)}
+                className="bg-accent text-primary p-4 rounded-xl font-bold text-center mt-4"
+              >
+                Connexion
+              </Link>
+            )}
           </motion.div>
         )}
       </AnimatePresence>
@@ -123,7 +299,7 @@ function Header() {
 
 function Footer() {
   const location = useLocation();
-  const hideOnPaths = ['/login', '/register', '/forgot-password', '/backoffice', '/admin', '/agent'];
+  const hideOnPaths = ['/login', '/register', '/forgot-password', '/complete-profile', '/auth/callback', '/backoffice', '/admin', '/agent'];
   if (hideOnPaths.some(path => location.pathname.startsWith(path))) return null;
 
   return (
@@ -188,12 +364,14 @@ export default function App() {
             <Route path="/login" element={<LoginPage />} />
             <Route path="/register" element={<RegisterPage />} />
             <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/complete-profile" element={<CompleteProfilePage />} />
+            <Route path="/auth/callback" element={<AuthCallbackPage />} />
             <Route path="/profile" element={<ProfilePage />} />
-            
+
             {/* Backoffice & Agent Routes */}
             <Route path="/backoffice" element={<BackofficeLoginPage />} />
-            <Route 
-              path="/admin/*" 
+            <Route
+              path="/admin/*"
               element={
                 <AdminLayout>
                   <Routes>
@@ -207,10 +385,10 @@ export default function App() {
                     {/* Additional admin routes would go here */}
                   </Routes>
                 </AdminLayout>
-              } 
+              }
             />
-            <Route 
-              path="/agent/*" 
+            <Route
+              path="/agent/*"
               element={
                 <AgentLayout>
                   <Routes>
@@ -218,7 +396,7 @@ export default function App() {
                     {/* Additional agent routes would go here */}
                   </Routes>
                 </AgentLayout>
-              } 
+              }
             />
           </Routes>
         </main>

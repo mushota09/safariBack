@@ -69,6 +69,9 @@ class AuthService:
             hashed_password=hashed_password,
             nom_complet=user_data.nom_complet,
             date_naissance=user_data.date_naissance,
+            document_identite=user_data.document_identite,
+            nationalite=user_data.nationalite,
+            sexe=user_data.sexe,
             langue_preferee=user_data.langue_preferee,
             is_active=True,
             is_superuser=False
@@ -171,6 +174,79 @@ class AuthService:
 
         user.hashed_password = self.get_password_hash(new_password)
         await db.commit()
+
+        return True
+
+    async def request_password_reset(self, db: AsyncSession, email: str) -> str:
+        """Génère un OTP et l'envoie par email pour réinitialisation de mot de passe"""
+        import random
+        from app.redis_client import redis_client
+
+        # Vérifier que l'utilisateur existe
+        result = await db.execute(select(Utilisateur).where(Utilisateur.email == email))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            # Pour des raisons de sécurité, ne pas révéler si l'email existe ou non
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="If this email exists, an OTP has been sent"
+            )
+
+        # Générer un OTP à 6 chiffres
+        otp = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+
+        # Stocker l'OTP dans Redis avec expiration de 10 minutes
+        redis_key = f"password_reset_otp:{email}"
+        await redis_client.setex(redis_key, 600, otp)  # 600 secondes = 10 minutes
+
+        # TODO: Envoyer l'OTP par email
+        # from app.services.email import send_password_reset_email
+        # await send_password_reset_email(email, otp)
+
+        print(f"🔐 OTP for {email}: {otp}")  # Pour le développement
+
+        return otp
+
+    async def verify_otp(self, email: str, otp: str) -> bool:
+        """Vérifie l'OTP pour la réinitialisation de mot de passe"""
+        from app.redis_client import redis_client
+
+        redis_key = f"password_reset_otp:{email}"
+        stored_otp = await redis_client.get(redis_key)
+
+        if not stored_otp or stored_otp.decode() != otp:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Invalid or expired OTP"
+            )
+
+        return True
+
+    async def reset_password(self, db: AsyncSession, email: str, otp: str, new_password: str) -> bool:
+        """Réinitialise le mot de passe après vérification de l'OTP"""
+        from app.redis_client import redis_client
+
+        # Vérifier l'OTP
+        await self.verify_otp(email, otp)
+
+        # Récupérer l'utilisateur
+        result = await db.execute(select(Utilisateur).where(Utilisateur.email == email))
+        user = result.scalar_one_or_none()
+
+        if not user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+
+        # Mettre à jour le mot de passe
+        user.hashed_password = self.get_password_hash(new_password)
+        await db.commit()
+
+        # Supprimer l'OTP de Redis
+        redis_key = f"password_reset_otp:{email}"
+        await redis_client.delete(redis_key)
 
         return True
 

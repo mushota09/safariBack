@@ -15,6 +15,8 @@ from app.models.reservation import (
     TypeReservation,
     TypeVehicule,
 )
+from app.models.passager import Passager, StatutPassager
+from app.models.vehicule import VehiculeReservation
 from app.models.ticket import Ticket
 from app.models.paiement import Paiement, StatutPaiement, ModePaiement
 from app.models.promotion import Promotion, TypeReduction

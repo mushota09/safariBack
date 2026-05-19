@@ -11,6 +11,34 @@ from app.redis_client import redis_client
 
 
 class TraverseeService:
+    async def get_traversee_by_id(
+        self,
+        db: AsyncSession,
+        traversee_id: int
+    ) -> TraverseeResponse:
+        """Récupère une traversée par son ID"""
+        from fastapi import HTTPException, status
+
+        query = select(ProgrammeVoyage).where(
+            ProgrammeVoyage.id == traversee_id
+        ).options(
+            selectinload(ProgrammeVoyage.port_depart),
+            selectinload(ProgrammeVoyage.port_arrivee),
+            selectinload(ProgrammeVoyage.bateau),
+            selectinload(ProgrammeVoyage.compagnie)
+        )
+
+        result = await db.execute(query)
+        voyage = result.scalar_one_or_none()
+
+        if not voyage:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Traversée {traversee_id} non trouvée"
+            )
+
+        return self._voyage_to_response(voyage)
+
     async def search_traversees(
         self,
         db: AsyncSession,

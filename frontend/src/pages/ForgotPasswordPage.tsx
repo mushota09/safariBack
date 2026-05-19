@@ -3,45 +3,79 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Mail, ArrowRight, ArrowLeft, Send, ShieldCheck, Lock, Eye, EyeOff, CheckCircle2 } from 'lucide-react';
 import { Link, useNavigate } from 'react-router-dom';
 import { SafariLogo } from '../components/SafariLogo';
+import { authService } from '../services/authService';
 
 type Step = 'email' | 'otp' | 'reset' | 'success';
 
 export default function ForgotPasswordPage() {
     const [step, setStep] = useState<Step>('email');
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
     const [otp, setOtp] = useState(['', '', '', '', '', '']);
+    const [email, setEmail] = useState('');
+    const [newPassword, setNewPassword] = useState('');
+    const [confirmPassword, setConfirmPassword] = useState('');
     const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
     const navigate = useNavigate();
 
-    const handleEmailSubmit = (e: React.FormEvent) => {
+    const handleEmailSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        // Simulate email sending
-        setTimeout(() => {
+        setError(null);
+
+        try {
+            await authService.forgotPassword({ email });
             setStep('otp');
+        } catch (err: any) {
+            setError(err.message || 'Échec de l\'envoi du code');
+        } finally {
             setLoading(false);
-        }, 1500);
+        }
     };
 
-    const handleOtpSubmit = (e: React.FormEvent) => {
+    const handleOtpSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        // Simulate OTP verification
-        setTimeout(() => {
+        setError(null);
+
+        const otpCode = otp.join('');
+
+        try {
+            await authService.verifyOTP({ email, otp: otpCode });
             setStep('reset');
+        } catch (err: any) {
+            setError(err.message || 'Code OTP invalide ou expiré');
+        } finally {
             setLoading(false);
-        }, 1500);
+        }
     };
 
-    const handleResetSubmit = (e: React.FormEvent) => {
+    const handleResetSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        // Simulate password reset
-        setTimeout(() => {
-            setStep('success');
+        setError(null);
+
+        if (newPassword !== confirmPassword) {
+            setError('Les mots de passe ne correspondent pas');
             setLoading(false);
-        }, 1500);
+            return;
+        }
+
+        const otpCode = otp.join('');
+
+        try {
+            await authService.resetPassword({
+                email,
+                otp: otpCode,
+                new_password: newPassword,
+            });
+            setStep('success');
+        } catch (err: any) {
+            setError(err.message || 'Échec de la réinitialisation');
+        } finally {
+            setLoading(false);
+        }
     };
 
     const handleOtpChange = (index: number, value: string) => {
@@ -63,14 +97,28 @@ export default function ForgotPasswordPage() {
         }
     };
 
+    const handleResendOTP = async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+            await authService.forgotPassword({ email });
+            setOtp(['', '', '', '', '', '']);
+        } catch (err: any) {
+            setError(err.message || 'Échec du renvoi du code');
+        } finally {
+            setLoading(false);
+        }
+    };
+
     return (
         <div className="min-h-screen flex flex-col md:flex-row bg-[#010312] overflow-hidden">
             {/* Left Column: Image/Banner */}
             <div className="md:w-1/2 bg-primary relative hidden md:flex items-center justify-center overflow-hidden">
                 <div className="absolute inset-0 z-0">
-                    <img 
-                        src="https://images.unsplash.com/photo-1517315003714-a071486bd9ea?q=80&w=1471&auto=format&fit=crop" 
-                        alt="Voyage" 
+                    <img
+                        src="https://images.unsplash.com/photo-1517315003714-a071486bd9ea?q=80&w=1471&auto=format&fit=crop"
+                        alt="Voyage"
                         className="w-full h-full object-cover opacity-20 mix-blend-luminosity scale-110"
                         referrerPolicy="no-referrer"
                     />
@@ -104,7 +152,7 @@ export default function ForgotPasswordPage() {
             <div className="flex-grow flex items-center justify-center p-8 pt-32 md:pt-8 bg-white/5 backdrop-blur-xl border-l border-white/5">
                 <div className="w-full max-w-md space-y-12">
                     {step !== 'success' && (
-                        <button 
+                        <button
                             onClick={() => step === 'email' ? navigate('/login') : setStep('email')}
                             className="inline-flex items-center gap-2 text-white/30 hover:text-accent transition-colors font-bold text-xs uppercase tracking-widest"
                         >
@@ -114,7 +162,7 @@ export default function ForgotPasswordPage() {
 
                     <AnimatePresence mode="wait">
                         {step === 'email' && (
-                            <motion.div 
+                            <motion.div
                                 key="email"
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
@@ -127,20 +175,28 @@ export default function ForgotPasswordPage() {
                                 </div>
 
                                 <form className="space-y-6" onSubmit={handleEmailSubmit}>
+                                    {error && (
+                                        <div className="bg-red-500/10 border-2 border-red-500/20 rounded-2xl p-4 text-red-400 text-sm font-bold">
+                                            {error}
+                                        </div>
+                                    )}
+
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Email</label>
                                         <div className="relative group">
                                             <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                                            <input 
-                                                type="email" 
+                                            <input
+                                                type="email"
                                                 placeholder="nom@exemple.com"
+                                                value={email}
+                                                onChange={(e) => setEmail(e.target.value)}
                                                 className="w-full pl-12 pr-4 py-5 bg-white/5 border-2 border-white/10 rounded-3xl outline-none focus:border-accent text-white transition-all font-bold placeholder:text-white/10"
                                                 required
                                             />
                                         </div>
                                     </div>
 
-                                    <button 
+                                    <button
                                         type="submit"
                                         disabled={loading}
                                         className="w-full bg-accent text-primary py-5 rounded-3xl font-black text-lg shadow-xl shadow-accent/10 hover:bg-white transition-all flex items-center justify-center gap-3 disabled:opacity-50"
@@ -153,7 +209,7 @@ export default function ForgotPasswordPage() {
                         )}
 
                         {step === 'otp' && (
-                            <motion.div 
+                            <motion.div
                                 key="otp"
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
@@ -166,6 +222,12 @@ export default function ForgotPasswordPage() {
                                 </div>
 
                                 <form className="space-y-8" onSubmit={handleOtpSubmit}>
+                                    {error && (
+                                        <div className="bg-red-500/10 border-2 border-red-500/20 rounded-2xl p-4 text-red-400 text-sm font-bold">
+                                            {error}
+                                        </div>
+                                    )}
+
                                     <div className="flex justify-between gap-2">
                                         {otp.map((digit, i) => (
                                             <input
@@ -182,7 +244,7 @@ export default function ForgotPasswordPage() {
                                     </div>
 
                                     <div className="space-y-4">
-                                        <button 
+                                        <button
                                             type="submit"
                                             disabled={loading || otp.some(d => !d)}
                                             className="w-full bg-accent text-primary py-5 rounded-3xl font-black text-lg shadow-xl shadow-accent/10 hover:bg-white transition-all flex items-center justify-center gap-3 disabled:opacity-50"
@@ -191,7 +253,12 @@ export default function ForgotPasswordPage() {
                                             {!loading && <ShieldCheck className="w-5 h-5" />}
                                         </button>
                                         <div className="text-center">
-                                            <button type="button" className="text-[10px] font-black uppercase tracking-widest text-white/20 hover:text-accent transition-colors italic">
+                                            <button
+                                                type="button"
+                                                onClick={handleResendOTP}
+                                                disabled={loading}
+                                                className="text-[10px] font-black uppercase tracking-widest text-white/20 hover:text-accent transition-colors italic disabled:opacity-50"
+                                            >
                                                 Renvoyer le code
                                             </button>
                                         </div>
@@ -201,7 +268,7 @@ export default function ForgotPasswordPage() {
                         )}
 
                         {step === 'reset' && (
-                            <motion.div 
+                            <motion.div
                                 key="reset"
                                 initial={{ opacity: 0, x: 20 }}
                                 animate={{ opacity: 1, x: 0 }}
@@ -214,18 +281,26 @@ export default function ForgotPasswordPage() {
                                 </div>
 
                                 <form className="space-y-6" onSubmit={handleResetSubmit}>
+                                    {error && (
+                                        <div className="bg-red-500/10 border-2 border-red-500/20 rounded-2xl p-4 text-red-400 text-sm font-bold">
+                                            {error}
+                                        </div>
+                                    )}
+
                                     <div className="space-y-2">
                                         <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Nouveau Mot de Passe</label>
                                         <div className="relative group">
                                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                                            <input 
-                                                type={showPassword ? "text" : "password"} 
-                                                placeholder="Minimum 8 caractères"
+                                            <input
+                                                type={showPassword ? "text" : "password"}
+                                                placeholder="Minimum 6 caractères"
+                                                value={newPassword}
+                                                onChange={(e) => setNewPassword(e.target.value)}
                                                 className="w-full pl-12 pr-12 py-5 bg-white/5 border-2 border-white/10 rounded-3xl outline-none focus:border-accent text-white transition-all font-bold placeholder:text-white/10"
                                                 required
-                                                minLength={8}
+                                                minLength={6}
                                             />
-                                            <button 
+                                            <button
                                                 type="button"
                                                 className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 text-white/20 flex items-center justify-center hover:text-accent"
                                                 onClick={() => setShowPassword(!showPassword)}
@@ -239,16 +314,18 @@ export default function ForgotPasswordPage() {
                                         <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Confirmer le mot de passe</label>
                                         <div className="relative group">
                                             <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                                            <input 
-                                                type={showPassword ? "text" : "password"} 
+                                            <input
+                                                type={showPassword ? "text" : "password"}
                                                 placeholder="Répétez votre mot de passe"
+                                                value={confirmPassword}
+                                                onChange={(e) => setConfirmPassword(e.target.value)}
                                                 className="w-full pl-12 pr-12 py-5 bg-white/5 border-2 border-white/10 rounded-3xl outline-none focus:border-accent text-white transition-all font-bold placeholder:text-white/10"
                                                 required
                                             />
                                         </div>
                                     </div>
 
-                                    <button 
+                                    <button
                                         type="submit"
                                         disabled={loading}
                                         className="w-full bg-accent text-primary py-5 rounded-3xl font-black text-lg shadow-xl shadow-accent/10 hover:bg-white transition-all flex items-center justify-center gap-3 disabled:opacity-50"
@@ -261,7 +338,7 @@ export default function ForgotPasswordPage() {
                         )}
 
                         {step === 'success' && (
-                            <motion.div 
+                            <motion.div
                                 key="success"
                                 initial={{ opacity: 0, scale: 0.9 }}
                                 animate={{ opacity: 1, scale: 1 }}
@@ -274,7 +351,7 @@ export default function ForgotPasswordPage() {
                                 <p className="text-white/40 text-sm leading-relaxed italic">
                                     Votre mot de passe a été réinitialisé avec succès. Vous pouvez maintenant vous connecter à votre compte.
                                 </p>
-                                <button 
+                                <button
                                     onClick={() => navigate('/login')}
                                     className="w-full bg-accent text-primary py-5 rounded-3xl font-black text-lg uppercase tracking-widest hover:bg-white transition-all shadow-xl shadow-accent/10"
                                 >

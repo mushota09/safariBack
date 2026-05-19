@@ -92,6 +92,16 @@ class Reservation(Base):
     lit: Mapped["Lit | None"] = relationship("Lit", back_populates="reservations")
     paiement: Mapped["Paiement | None"] = relationship("Paiement", back_populates="reservation", uselist=False)
     ticket: Mapped["Ticket | None"] = relationship("Ticket", back_populates="reservation", uselist=False)
+    passagers: Mapped[List["Passager"]] = relationship(
+        "Passager",
+        back_populates="reservation",
+        cascade="all, delete-orphan",
+    )
+    vehicules: Mapped[List["VehiculeReservation"]] = relationship(
+        "VehiculeReservation",
+        back_populates="reservation",
+        cascade="all, delete-orphan",
+    )
     passagers_details: Mapped[List["ReservationPassager"]] = relationship(
         "ReservationPassager",
         back_populates="reservation",

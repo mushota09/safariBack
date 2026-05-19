@@ -4,9 +4,9 @@ La table ``image_bateau`` stocke la collection d'images affichées sur la page
 détail d'un bateau. Le champ ``photo_principale`` du bateau reste l'image
 utilisée pour les listings (cards, recherche).
 """
-from typing import Annotated, List
+from typing import Annotated, List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -22,6 +22,7 @@ from app.modules.compagnie.schemas import (
     ImageBateauResponse,
     ImageBateauUpdate,
 )
+from app.services.file_storage import file_storage
 
 router = APIRouter(prefix="/bateaux/{bateau_id}/images", tags=["Galerie Bateau"])
 
@@ -56,6 +57,55 @@ async def list_images(
         photo_principale=bateau.photo_principale,
         images=[ImageBateauResponse.model_validate(img) for img in bateau.images],
     )
+
+
+@router.post("/upload", response_model=ImageBateauResponse, status_code=status.HTTP_201_CREATED)
+async def upload_image(
+    bateau_id: int,
+    file: UploadFile = File(...),
+    legende: Optional[str] = Form(None),
+    description: Optional[str] = Form(None),
+    est_principale: bool = Form(False),
+    ordre: int = Form(0),
+    db: Annotated[AsyncSession, Depends(get_db)] = None,
+    _: Annotated[Utilisateur, Depends(get_current_superuser)] = None,
+):
+    """Upload une image pour un bateau (admin)."""
+    bateau = await _get_bateau_or_404(db, bateau_id)
+
+    # Sauvegarder le fichier et obtenir l'URL
+    url = await file_storage.save_boat_image(file, bateau_id, est_principale)
+
+    if est_principale:
+        # Désactiver toute autre image marquée comme principale
+        result = await db.execute(
+            select(ImageBateau).where(
+                ImageBateau.bateau_id == bateau_id,
+                ImageBateau.est_principale.is_(True)
+            )
+        )
+        for existing in result.scalars().all():
+            existing.est_principale = False
+
+    # Créer l'entrée dans la base de données
+    image = ImageBateau(
+        bateau_id=bateau.id,
+        url=url,
+        legende=legende,
+        description=description,
+        est_principale=est_principale,
+        ordre=ordre
+    )
+    db.add(image)
+    await db.commit()
+    await db.refresh(image)
+
+    # Synchroniser la photo_principale du bateau si nécessaire
+    if est_principale:
+        bateau.photo_principale = url
+        await db.commit()
+
+    return image
 
 
 @router.post("", response_model=ImageBateauResponse, status_code=status.HTTP_201_CREATED)

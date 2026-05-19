@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-    User, 
-    Lock, 
-    ArrowRight, 
-    Ship, 
-    Users, 
+import {
+    User,
+    Lock,
+    ArrowRight,
+    Ship,
+    Users,
     ChevronLeft,
     ShieldCheck,
     Mail,
@@ -18,26 +18,76 @@ import { cn } from '../lib/utils';
 export default function BackofficeLoginPage() {
     const [loginType, setLoginType] = useState<'agent' | 'company' | null>(null);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [formData, setFormData] = useState({ email: '', password: '' });
     const navigate = useNavigate();
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        setTimeout(() => {
-            if (loginType === 'agent') {
-                navigate('/agent/scan'); // In a real app, this would be based on role
-            } else {
+        setError(null);
+
+        try {
+            // Real authentication for admin
+            if (loginType === 'company') {
+                const response = await fetch('http://localhost:8000/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        username: formData.email,
+                        password: formData.password,
+                    }),
+                });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({}));
+                    throw new Error(errorData.detail || 'Identifiants incorrects');
+                }
+
+                const tokens = await response.json();
+
+                // Store tokens
+                localStorage.setItem('access_token', tokens.access_token);
+                localStorage.setItem('refresh_token', tokens.refresh_token);
+
+                // Verify user is admin
+                const userResponse = await fetch('http://localhost:8000/auth/me', {
+                    headers: {
+                        'Authorization': `Bearer ${tokens.access_token}`
+                    }
+                });
+
+                if (!userResponse.ok) {
+                    throw new Error('Erreur lors de la vérification du compte');
+                }
+
+                const user = await userResponse.json();
+
+                if (!user.est_superuser) {
+                    localStorage.removeItem('access_token');
+                    localStorage.removeItem('refresh_token');
+                    throw new Error('Accès réservé aux administrateurs');
+                }
+
                 navigate('/admin');
+            } else {
+                // Agent login (mock for now)
+                navigate('/agent/scan');
             }
+        } catch (err: any) {
+            setError(err.message || 'Erreur de connexion');
+        } finally {
             setLoading(false);
-        }, 1500);
+        }
     };
 
     return (
         <div className="min-h-screen bg-[#010312] flex flex-col items-center justify-center p-6 bg-grid-white/[0.02] relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-accent/10 via-transparent to-primary/20 pointer-events-none" />
-            
-            <motion.div 
+
+            <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="w-full max-w-md space-y-12 relative z-10"
@@ -54,14 +104,14 @@ export default function BackofficeLoginPage() {
 
                 <AnimatePresence mode="wait">
                     {!loginType ? (
-                        <motion.div 
+                        <motion.div
                             key="selection"
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             className="grid grid-cols-1 gap-6"
                         >
-                            <button 
+                            <button
                                 onClick={() => setLoginType('company')}
                                 className="group relative p-10 bg-white/5 border-2 border-white/5 rounded-[40px] hover:border-accent/40 hover:bg-accent/5 transition-all text-left"
                             >
@@ -77,7 +127,7 @@ export default function BackofficeLoginPage() {
                                 <ArrowRight className="absolute bottom-10 right-10 w-6 h-6 text-white/10 group-hover:text-accent group-hover:translate-x-2 transition-all" />
                             </button>
 
-                            <button 
+                            <button
                                 onClick={() => setLoginType('agent')}
                                 className="group relative p-10 bg-white/5 border-2 border-white/5 rounded-[40px] hover:border-accent/40 hover:bg-accent/5 transition-all text-left"
                             >
@@ -94,14 +144,14 @@ export default function BackofficeLoginPage() {
                             </button>
                         </motion.div>
                     ) : (
-                        <motion.div 
+                        <motion.div
                             key="login-form"
                             initial={{ opacity: 0, x: 20 }}
                             animate={{ opacity: 1, x: 0 }}
                             exit={{ opacity: 0, x: -20 }}
                             className="bg-white/5 border border-white/5 rounded-[48px] p-10 space-y-10"
                         >
-                            <button 
+                            <button
                                 onClick={() => setLoginType(null)}
                                 className="flex items-center gap-2 text-[10px] font-black uppercase text-white/30 hover:text-white transition-colors"
                             >
@@ -116,13 +166,21 @@ export default function BackofficeLoginPage() {
                             </div>
 
                             <form className="space-y-6" onSubmit={handleLogin}>
+                                {error && (
+                                    <div className="bg-red-500/10 border border-red-500/20 rounded-2xl p-4">
+                                        <p className="text-xs text-red-500 font-bold text-center">{error}</p>
+                                    </div>
+                                )}
+
                                 <div className="space-y-2">
                                     <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Identifiant ou Email</label>
                                     <div className="relative group">
                                         <Mail className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-white/10 group-focus-within:text-accent transition-colors" />
-                                        <input 
-                                            type="text" 
-                                            placeholder="Ex: agent_092"
+                                        <input
+                                            type="text"
+                                            placeholder="Ex: admin@safari.com"
+                                            value={formData.email}
+                                            onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                                             className="w-full pl-16 pr-6 py-5 bg-white/5 border-2 border-white/10 rounded-[24px] outline-none focus:border-accent text-white font-bold transition-all placeholder:text-white/5"
                                             required
                                         />
@@ -133,16 +191,18 @@ export default function BackofficeLoginPage() {
                                     <label className="text-[9px] font-black text-white/20 uppercase tracking-widest ml-1">Mot de passe</label>
                                     <div className="relative group">
                                         <Lock className="absolute left-6 top-1/2 -translate-y-1/2 w-5 h-5 text-white/10 group-focus-within:text-accent transition-colors" />
-                                        <input 
-                                            type="password" 
+                                        <input
+                                            type="password"
                                             placeholder="••••••••"
+                                            value={formData.password}
+                                            onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                                             className="w-full pl-16 pr-6 py-5 bg-white/5 border-2 border-white/10 rounded-[24px] outline-none focus:border-accent text-white font-bold transition-all placeholder:text-white/5"
                                             required
                                         />
                                     </div>
                                 </div>
 
-                                <button 
+                                <button
                                     disabled={loading}
                                     className="w-full bg-accent text-primary py-5 rounded-[24px] archivo-black text-base uppercase tracking-widest italic hover:bg-white transition-all shadow-xl shadow-accent/5 disabled:opacity-50"
                                 >

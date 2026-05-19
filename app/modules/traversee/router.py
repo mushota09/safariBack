@@ -62,3 +62,12 @@ async def stream_traversees(
         traversee_service.stream_traversees(db, search_params),
         media_type="application/x-ndjson"
     )
+
+
+@router.get("/{traversee_id}", response_model=TraverseeResponse)
+async def get_traversee(
+    traversee_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Récupère une traversée par son ID"""
+    return await traversee_service.get_traversee_by_id(db, traversee_id)

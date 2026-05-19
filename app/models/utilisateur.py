@@ -19,6 +19,11 @@ class RoleUtilisateur(str, enum.Enum):
     super_admin = "super_admin"
 
 
+class SexeUtilisateur(str, enum.Enum):
+    masculin = "masculin"
+    feminin = "feminin"
+
+
 class Utilisateur(ModeleDeBase):
     __tablename__ = "utilisateur"
 
@@ -32,6 +37,9 @@ class Utilisateur(ModeleDeBase):
     nom_complet: Mapped[str | None] = mapped_column(String(200), nullable=True)
     photo_profil: Mapped[str | None] = mapped_column(String(500), nullable=True)
     date_naissance: Mapped[date | None] = mapped_column(Date, nullable=True)
+    document_identite: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    nationalite: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    sexe: Mapped[SexeUtilisateur | None] = mapped_column(SQLEnum(SexeUtilisateur), nullable=True)
     langue_preferee: Mapped[str] = mapped_column(String(5), default="fr", nullable=False)
     notification_email: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notification_sms: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)

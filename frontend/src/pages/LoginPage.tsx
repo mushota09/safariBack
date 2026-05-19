@@ -1,25 +1,56 @@
 import React, { useState } from 'react';
 import { motion } from 'motion/react';
 import { Mail, Lock, Eye, EyeOff, Anchor, ArrowRight, ChevronLeft } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { cn } from '../lib/utils';
 
 import { SafariLogo } from '../components/SafariLogo';
 import googleLogo from '../assets/logo_google.png';
+import { authService } from '../services/authService';
 
 export default function LoginPage() {
     const [showPassword, setShowPassword] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const redirectUrl = searchParams.get('redirect') || '/';
 
-    const handleLogin = (e: React.FormEvent) => {
+    const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
-        // Simulate auth
-        setTimeout(() => {
-            navigate('/');
+        setError(null);
+
+        try {
+            await authService.login({
+                username: email,
+                password: password,
+            });
+            navigate(redirectUrl);
+        } catch (err: any) {
+            setError(err.message || 'Échec de la connexion');
+        } finally {
             setLoading(false);
-        }, 1000);
+        }
+    };
+
+    const handleGoogleLogin = async () => {
+        setLoading(true);
+        setError(null);
+
+        try {
+            const authUrl = await authService.getGoogleAuthUrl();
+            // Store redirect URL in sessionStorage for after OAuth callback
+            if (redirectUrl !== '/') {
+                sessionStorage.setItem('oauth_redirect', redirectUrl);
+            }
+            window.location.href = authUrl;
+        } catch (err: any) {
+            setError(err.message || 'Échec de la connexion Google');
+            setLoading(false);
+        }
     };
 
     return (
@@ -27,9 +58,9 @@ export default function LoginPage() {
             {/* Left Column: Image/Banner */}
             <div className="md:w-1/2 bg-primary relative hidden md:flex items-center justify-center overflow-hidden">
                 <div className="absolute inset-0 z-0">
-                    <img 
-                        src="https://images.unsplash.com/photo-1544911845-1f34a3eb46b1?q=80&w=1470&auto=format&fit=crop" 
-                        alt="Voyage" 
+                    <img
+                        src="https://images.unsplash.com/photo-1544911845-1f34a3eb46b1?q=80&w=1470&auto=format&fit=crop"
+                        alt="Voyage"
                         className="w-full h-full object-cover opacity-20 mix-blend-luminosity scale-110"
                         referrerPolicy="no-referrer"
                     />
@@ -60,7 +91,7 @@ export default function LoginPage() {
 
             {/* Right Column: Form */}
             <div className="flex-grow flex flex-col items-center justify-center p-8 pt-32 md:pt-8 bg-white/5 backdrop-blur-xl border-l border-white/5 relative">
-                <button 
+                <button
                     onClick={() => navigate('/')}
                     className="absolute top-12 left-12 flex items-center gap-2 text-white/30 hover:text-accent transition-all group"
                 >
@@ -69,7 +100,7 @@ export default function LoginPage() {
                     </div>
                 </button>
 
-                <motion.div 
+                <motion.div
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     className="w-full max-w-md space-y-12"
@@ -80,13 +111,21 @@ export default function LoginPage() {
                     </div>
 
                     <form className="space-y-6" onSubmit={handleLogin}>
+                        {error && (
+                            <div className="bg-red-500/10 border-2 border-red-500/20 rounded-2xl p-4 text-red-400 text-sm font-bold">
+                                {error}
+                            </div>
+                        )}
+
                         <div className="space-y-2">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest ml-1">Email</label>
                             <div className="relative group">
                                 <Mail className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                                <input 
-                                    type="email" 
+                                <input
+                                    type="email"
                                     placeholder="nom@exemple.com"
+                                    value={email}
+                                    onChange={(e) => setEmail(e.target.value)}
                                     className="w-full pl-12 pr-4 py-5 bg-white/5 border-2 border-white/10 rounded-3xl outline-none focus:border-accent text-white transition-all font-bold placeholder:text-white/10"
                                     required
                                 />
@@ -96,17 +135,19 @@ export default function LoginPage() {
                         <div className="space-y-2">
                             <div className="flex justify-between items-center px-1">
                                 <label className="text-[10px] font-black text-white/30 uppercase tracking-widest">Mot de passe</label>
-                                <Link to="/forgot-password" size="sm" className="text-xs text-accent font-bold hover:underline">Oublié ?</Link>
+                                <Link to="/forgot-password" className="text-xs text-accent font-bold hover:underline">Oublié ?</Link>
                             </div>
                             <div className="relative group">
                                 <Lock className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-white/20 group-focus-within:text-accent transition-colors" />
-                                <input 
-                                    type={showPassword ? "text" : "password"} 
+                                <input
+                                    type={showPassword ? "text" : "password"}
                                     placeholder="••••••••"
+                                    value={password}
+                                    onChange={(e) => setPassword(e.target.value)}
                                     className="w-full pl-12 pr-12 py-5 bg-white/5 border-2 border-white/10 rounded-3xl outline-none focus:border-accent text-white transition-all font-bold placeholder:text-white/10"
                                     required
                                 />
-                                <button 
+                                <button
                                     type="button"
                                     className="absolute right-4 top-1/2 -translate-y-1/2 h-8 w-8 text-white/20 flex items-center justify-center hover:text-accent"
                                     onClick={() => setShowPassword(!showPassword)}
@@ -116,7 +157,7 @@ export default function LoginPage() {
                             </div>
                         </div>
 
-                        <button 
+                        <button
                             type="submit"
                             disabled={loading}
                             className="w-full bg-accent text-primary py-5 rounded-3xl font-black text-lg shadow-xl shadow-accent/10 hover:bg-white transition-all flex items-center justify-center gap-3 disabled:opacity-50"
@@ -131,7 +172,12 @@ export default function LoginPage() {
                         <div className="relative flex justify-center text-[10px] uppercase font-black text-white/20 tracking-widest"><span className="bg-[#010312] px-4">Ou continuer avec</span></div>
                     </div>
 
-                    <button className="w-full bg-white/5 border-2 border-white/10 text-white py-5 rounded-3xl font-bold flex items-center justify-center gap-4 hover:border-white/20 transition-all shadow-sm">
+                    <button
+                        onClick={handleGoogleLogin}
+                        disabled={loading}
+                        type="button"
+                        className="w-full bg-white/5 border-2 border-white/10 text-white py-5 rounded-3xl font-bold flex items-center justify-center gap-4 hover:border-white/20 transition-all shadow-sm disabled:opacity-50"
+                    >
                         <img src={googleLogo} alt="Google" className={cn("w-5 h-5 object-contain")} />
                         Continuer avec Google
                     </button>

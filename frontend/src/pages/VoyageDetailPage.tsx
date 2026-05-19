@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'motion/react';
-import { 
-  ArrowLeft, MapPin, Calendar, Clock, Star, Users, Ship, 
+import {
+  ArrowLeft, MapPin, Calendar, Clock, Star, Users, Ship,
   Wifi, Coffee, ShoppingBag, Wind, Bed, Check, ChevronRight,
   TrendingUp, PlaneTakeoff, Navigation2, Info, Timer, IdCard, Briefcase,
   Smartphone, Car, Shirt
@@ -10,26 +10,86 @@ import {
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { cn, formatCurrency } from '../lib/utils';
-import { Voyage } from '../types';
+import { voyageService, Traversee } from '../services/voyageService';
+import { authService } from '../services/authService';
 
 export default function VoyageDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const [voyage, setVoyage] = useState<Voyage | null>(null);
+  const [traversee, setTraversee] = useState<Traversee | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check authentication status
+  useEffect(() => {
+    setIsAuthenticated(authService.isAuthenticated());
+  }, []);
 
   useEffect(() => {
-    setLoading(true);
-    fetch(`/api/voyages/${id}`)
-      .then(res => res.json())
-      .then(data => {
-        setVoyage(data);
+    const loadTraversee = async () => {
+      if (!id) {
+        setError('ID de traversée manquant');
         setLoading(false);
-      });
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const data = await voyageService.getTraverseeById(parseInt(id));
+        setTraversee(data);
+      } catch (err: any) {
+        console.error('Failed to load traversee:', err);
+        setError('Impossible de charger les détails de la traversée');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadTraversee();
   }, [id]);
 
-  if (loading) return <div className="pt-32 text-centerarchivo-black text-2xl">Chargement...</div>;
-  if (!voyage) return <div className="pt-32 text-center">Déjà parti !</div>;
+  const handleReservation = () => {
+    if (!isAuthenticated) {
+      // Redirect to login with return URL
+      navigate(`/login?redirect=/voyage/${id}`);
+    } else {
+      // Proceed to reservation
+      navigate(`/reservation/${traversee!.id}`);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="pt-32 min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="w-16 h-16 border-4 border-accent border-t-transparent rounded-full animate-spin mx-auto"></div>
+          <p className="archivo-black text-2xl text-white">Chargement...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !traversee) {
+    return (
+      <div className="pt-32 min-h-screen flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <Ship className="w-16 h-16 text-white/20 mx-auto" />
+          <h2 className="archivo-black text-2xl text-white">{error || 'Traversée introuvable'}</h2>
+          <button
+            onClick={() => navigate('/')}
+            className="bg-accent text-primary px-6 py-3 rounded-2xl font-black uppercase"
+          >
+            Retour au programme
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const placesVendues = traversee.places_vendues_passagers || 0;
+  const placesTotales = traversee.places_totales_passagers || traversee.bateau.capacite_passagers;
+  const prixAffiche = traversee.prix_promotionnel || traversee.prix_base;
 
   const amenities = [
     { icon: Wind, label: 'Climatisation', active: true },
@@ -42,7 +102,7 @@ export default function VoyageDetailPage() {
   return (
     <div className="pt-20 pb-32">
       <div className="max-w-7xl mx-auto px-6 mb-8">
-        <button 
+        <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-white/50 font-bold hover:text-white transition-colors group"
         >
@@ -60,9 +120,9 @@ export default function VoyageDetailPage() {
               {/* Gallery */}
               <div className="flex flex-col gap-4">
                 <div className="h-[500px] rounded-[40px] overflow-hidden shadow-2xl relative">
-                  <img 
-                    src={voyage.photo} 
-                    alt={voyage.bateau} 
+                  <img
+                    src={traversee.bateau.photo_principale || 'https://images.unsplash.com/photo-1544911845-1f34a3eb46b1?q=80&w=1470&auto=format&fit=crop'}
+                    alt={traversee.bateau.nom}
                     className="w-full h-full object-cover"
                     referrerPolicy="no-referrer"
                   />
@@ -74,7 +134,7 @@ export default function VoyageDetailPage() {
                           </div>
                       </div>
                       <h1 className="archivo-black text-4xl md:text-6xl text-white uppercase tracking-tighter leading-none">
-                          {voyage.bateau}
+                          {traversee.bateau.nom}
                       </h1>
                   </div>
                 </div>
@@ -114,22 +174,22 @@ export default function VoyageDetailPage() {
                               <div>
                                   <h3 className="archivo-black text-xl text-white uppercase leading-none mb-1">Passagers</h3>
                                   <p className="text-[10px] font-bold text-white/30 uppercase tracking-widest">
-                                      {voyage.places_vendues} réservés sur {voyage.places_totales}
+                                      {placesVendues} réservés sur {placesTotales}
                                   </p>
                               </div>
                           </div>
-                          
+
                           <div className="space-y-4">
                               <div className="h-3 w-full bg-[#010312] rounded-full overflow-hidden border border-white/5">
-                                  <motion.div 
+                                  <motion.div
                                       initial={{ width: 0 }}
-                                      animate={{ width: `${(voyage.places_vendues / voyage.places_totales) * 100}%` }}
+                                      animate={{ width: `${(placesVendues / placesTotales) * 100}%` }}
                                       className="h-full bg-green-500/20"
                                   />
                               </div>
                               <div className="flex justify-between items-center text-[10px] font-black uppercase tracking-widest">
-                                  <span className="text-green-500">{voyage.places_totales - voyage.places_vendues} place(s) restante(s)</span>
-                                  <span className="text-white/20">{Math.round((voyage.places_vendues / voyage.places_totales) * 100)}% occupé</span>
+                                  <span className="text-green-500">{placesTotales - placesVendues} place(s) restante(s)</span>
+                                  <span className="text-white/20">{Math.round((placesVendues / placesTotales) * 100)}% occupé</span>
                               </div>
                           </div>
                       </div>
@@ -147,10 +207,10 @@ export default function VoyageDetailPage() {
                                   </p>
                               </div>
                           </div>
-                          
+
                           <div className="space-y-4">
                               <div className="h-3 w-full bg-[#010312] rounded-full overflow-hidden border border-white/5">
-                                  <motion.div 
+                                  <motion.div
                                       initial={{ width: 0 }}
                                       animate={{ width: `0%` }}
                                       className="h-full bg-blue-500/20"
@@ -191,8 +251,8 @@ export default function VoyageDetailPage() {
                                   <MapPin className="w-4 h-4" /> Port de Départ
                               </div>
                               <div>
-                                  <div className="archivo-black text-3xl text-white uppercase">{voyage.depart}</div>
-                                  <div className="text-lg font-bold text-white/50">{format(new Date(voyage.date), 'HH:mm')}</div>
+                                  <div className="archivo-black text-3xl text-white uppercase">{traversee.port_depart.nom}</div>
+                                  <div className="text-lg font-bold text-white/50">{format(new Date(traversee.date_depart_programme), 'HH:mm')}</div>
                               </div>
                           </div>
 
@@ -206,7 +266,9 @@ export default function VoyageDetailPage() {
                               </div>
                               <div className="bg-white/5 px-4 py-2 rounded-full flex items-center gap-2 border border-white/10">
                                   <Clock className="w-4 h-4 text-accent" />
-                                  <span className="text-xs font-black text-white/70">8h 30min ESTIMÉS</span>
+                                  <span className="text-xs font-black text-white/70">
+                                    {traversee.duree_estimee_heures ? `${traversee.duree_estimee_heures}h` : '8h 30min'} ESTIMÉS
+                                  </span>
                               </div>
                           </div>
 
@@ -215,8 +277,13 @@ export default function VoyageDetailPage() {
                                   Destination <MapPin className="w-4 h-4" />
                               </div>
                               <div>
-                                  <div className="archivo-black text-3xl text-white uppercase">{voyage.arrivee}</div>
-                                  <div className="text-lg font-bold text-white/50">~ 18:30</div>
+                                  <div className="archivo-black text-3xl text-white uppercase">{traversee.port_arrivee.nom}</div>
+                                  <div className="text-lg font-bold text-white/50">
+                                    {traversee.date_arrivee_estimee
+                                      ? format(new Date(traversee.date_arrivee_estimee), 'HH:mm')
+                                      : '~ 18:30'
+                                    }
+                                  </div>
                               </div>
                           </div>
                       </div>
@@ -232,7 +299,7 @@ export default function VoyageDetailPage() {
                               <Ship className="text-accent" /> Capitaine & Équipage
                           </h4>
                           <p className="text-sm text-white/50 leading-relaxed">
-                              Le capitaine <span className="text-white font-bold">Jean-Claude Mwamba</span> et son équipage de 12 personnes vous accueillent à bord. 
+                              Le capitaine <span className="text-white font-bold">Jean-Claude Mwamba</span> et son équipage de 12 personnes vous accueillent à bord.
                           </p>
                           <div className="pt-4 flex gap-4">
                               <div className="flex flex-col">
@@ -266,7 +333,7 @@ export default function VoyageDetailPage() {
                           Frais selon le délai
                       </span>
                   </div>
-                  
+
                   <div className="space-y-3">
                       {[
                           { label: 'Plus de 7 jours avant le départ', value: 'Aucun frais', color: 'border-green-500/30 bg-green-500/5 text-green-400' },
@@ -275,8 +342,8 @@ export default function VoyageDetailPage() {
                           { label: 'Moins de 24 h avant', value: '80 % de frais', color: 'border-red-500/30 bg-red-500/5 text-red-500' },
                           { label: 'Après le départ', value: 'Non remboursable', color: 'border-red-900/30 bg-red-950/20 text-red-800' },
                       ].map((policy) => (
-                          <div 
-                              key={policy.label} 
+                          <div
+                              key={policy.label}
                               className={cn(
                                   "flex items-center justify-between p-6 rounded-2xl border backdrop-blur-sm transition-all hover:scale-[1.01]",
                                   policy.color
@@ -287,7 +354,7 @@ export default function VoyageDetailPage() {
                           </div>
                       ))}
                   </div>
-                  
+
                   <div className="bg-white/5 p-6 rounded-2xl border border-white/10">
                       <p className="text-white/30 text-[10px] font-bold uppercase tracking-widest leading-relaxed">
                           Note : Remboursement à 80% si annulation 24h avant le départ. Les frais de service et taxes portuaires sont non-remboursables après confirmation du billet.
@@ -298,38 +365,38 @@ export default function VoyageDetailPage() {
               {/* Travel Tips Section */}
               <div className="space-y-8">
                   <h2 className="archivo-black text-2xl text-white uppercase">Conseils pour votre voyage</h2>
-                  
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       {[
-                          { 
-                              icon: Timer, 
-                              title: 'Arrivez en avance', 
-                              desc: 'Présentez-vous au quai au plus tard 45 min avant le départ pour l’embarquement.' 
+                          {
+                              icon: Timer,
+                              title: 'Arrivez en avance',
+                              desc: 'Présentez-vous au quai au plus tard 45 min avant le départ pour l’embarquement.'
                           },
-                          { 
-                              icon: IdCard, 
-                              title: 'Pièce d’identité', 
-                              desc: 'Une pièce d’identité officielle est exigée pour chaque passager à l’embarquement.' 
+                          {
+                              icon: IdCard,
+                              title: 'Pièce d’identité',
+                              desc: 'Une pièce d’identité officielle est exigée pour chaque passager à l’embarquement.'
                           },
-                          { 
-                              icon: Briefcase, 
-                              title: 'Bagages', 
-                              desc: '1 bagage cabine + 1 bagage soute inclus. Bagages volumineux à signaler à la compagnie.' 
+                          {
+                              icon: Briefcase,
+                              title: 'Bagages',
+                              desc: '1 bagage cabine + 1 bagage soute inclus. Bagages volumineux à signaler à la compagnie.'
                           },
-                          { 
-                              icon: Smartphone, 
-                              title: 'Billet électronique', 
-                              desc: 'Votre billet et QR code sont envoyés par email immédiatement après la réservation.' 
+                          {
+                              icon: Smartphone,
+                              title: 'Billet électronique',
+                              desc: 'Votre billet et QR code sont envoyés par email immédiatement après la réservation.'
                           },
-                          { 
-                              icon: Car, 
-                              title: 'Véhicules', 
-                              desc: 'Présentez-vous 60 min avant le départ et munissez-vous de la carte grise.' 
+                          {
+                              icon: Car,
+                              title: 'Véhicules',
+                              desc: 'Présentez-vous 60 min avant le départ et munissez-vous de la carte grise.'
                           },
-                          { 
-                              icon: Shirt, 
-                              title: 'Prévoir une veste', 
-                              desc: 'Les conditions en mer peuvent être plus fraîches qu’à quai, même en été.' 
+                          {
+                              icon: Shirt,
+                              title: 'Prévoir une veste',
+                              desc: 'Les conditions en mer peuvent être plus fraîches qu’à quai, même en été.'
                           },
                       ].map((tip, idx) => (
                           <div key={idx} className="flex items-start gap-5 p-6 rounded-3xl bg-white/5 border border-white/10 hover:border-accent/30 transition-all group">
@@ -355,9 +422,12 @@ export default function VoyageDetailPage() {
                     <span className="text-white/40 text-xs font-bold uppercase tracking-widest block">Prix par passager</span>
                     <div className="flex items-end justify-between">
                         <div className="flex items-baseline gap-2">
-                            <span className="text-4xl archivo-black text-accent">{formatCurrency(voyage.prix_base)}</span>
+                            <span className="text-4xl archivo-black text-accent">{formatCurrency(prixAffiche)}</span>
                             <span className="text-white/40 font-medium text-sm">USD</span>
                         </div>
+                        {traversee.prix_promotionnel && (
+                          <span className="text-white/30 line-through text-sm">${traversee.prix_base}</span>
+                        )}
                     </div>
                 </div>
 
@@ -372,12 +442,12 @@ export default function VoyageDetailPage() {
                         <div className="space-y-2">
                             <div className="flex justify-between text-[10px] font-bold text-white/40">
                                 <span>Places Vendues</span>
-                                <span>{voyage.places_vendues} / {voyage.places_totales}</span>
+                                <span>{placesVendues} / {placesTotales}</span>
                             </div>
                             <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                                <motion.div 
+                                <motion.div
                                     initial={{ width: 0 }}
-                                    animate={{ width: `${(voyage.places_vendues/voyage.places_totales)*100}%` }}
+                                    animate={{ width: `${(placesVendues/placesTotales)*100}%` }}
                                     className="h-full bg-accent"
                                 />
                             </div>
@@ -387,8 +457,8 @@ export default function VoyageDetailPage() {
 
                 <ul className="space-y-4">
                     {[
-                      'Billet électronique (QR)', 
-                      'Embarquement prioritaire', 
+                      'Billet électronique (QR)',
+                      'Embarquement prioritaire',
                       'Annulation gratuite (24h)'
                     ].map(item => (
                         <li key={item} className="flex items-center gap-4 text-xs font-bold text-slate-300 tracking-tight">
@@ -400,11 +470,11 @@ export default function VoyageDetailPage() {
                     ))}
                 </ul>
 
-                <button 
-                  onClick={() => navigate(`/reservation/${voyage.id}`)}
+                <button
+                  onClick={handleReservation}
                   className="w-full bg-[#010312] border border-white/5 text-white py-6 rounded-[32px] font-black text-xs md:text-sm tracking-[0.1em] shadow-2xl hover:bg-white hover:text-black transition-all flex items-center justify-center gap-3 group uppercase"
                 >
-                  Réserver Maintenant
+                  {isAuthenticated ? 'Réserver Maintenant' : 'Se connecter pour réserver'}
                   <ChevronRight className="w-4 h-4 group-hover:translate-x-2 transition-transform text-white group-hover:text-black" />
                 </button>
               </div>
@@ -415,11 +485,11 @@ export default function VoyageDetailPage() {
 
       {/* Mobile CTA */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-lg border-t border-slate-200 z-50">
-        <button 
-            onClick={() => navigate(`/reservation/${voyage.id}`)}
+        <button
+            onClick={handleReservation}
             className="w-full bg-primary text-white py-5 rounded-2xl font-black text-lg flex items-center justify-center gap-3"
         >
-            RESERVER {formatCurrency(voyage.prix_base)}
+            {isAuthenticated ? `RESERVER ${formatCurrency(prixAffiche)}` : 'SE CONNECTER POUR RÉSERVER'}
             <ChevronRight />
         </button>
       </div>

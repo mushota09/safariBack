@@ -1,9 +1,11 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
+from pathlib import Path
 
 from app.config import settings
 from app.database import init_db, close_db
@@ -116,6 +118,11 @@ app.include_router(paiement_router)
 app.include_router(embarquement_router)
 app.include_router(websocket_router)
 app.include_router(geographie_router)
+
+# Monter le dossier uploads pour servir les fichiers statiques
+uploads_dir = Path(settings.UPLOAD_DIR)
+uploads_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(uploads_dir)), name="uploads")
 
 
 if __name__ == "__main__":

@@ -15,7 +15,10 @@ from app.modules.auth.schemas import (
     TokenRefresh,
     UserResponse,
     PasswordChange,
-    CompleteProfile
+    CompleteProfile,
+    ForgotPasswordRequest,
+    VerifyOTPRequest,
+    ResetPasswordRequest
 )
 from app.modules.auth.service import auth_service
 from app.modules.auth.google_auth import google_auth_service
@@ -165,21 +168,30 @@ async def google_callback(
     code: str = Query(...)
 ):
     """Callback Google OAuth"""
+    print(f"🔵 Google callback received with code: {code[:20]}...")
+
     # Échanger le code contre un token
     token_data = await google_auth_service.exchange_code_for_token(code)
     access_token = token_data.get("access_token")
+    print(f"🔑 Got Google access token: {access_token[:20] if access_token else 'NONE'}...")
 
     # Récupérer les infos utilisateur
     user_info = await google_auth_service.get_user_info(access_token)
+    print(f"👤 User info from Google: {user_info.get('email')}, {user_info.get('name')}")
 
     # Authentifier ou créer l'utilisateur
     user = await google_auth_service.authenticate_or_create_user(db, user_info)
+    print(f"✅ User authenticated/created: ID={user.id}, email={user.email}, phone={user.numero_telephone}")
 
     # Créer les tokens JWT
     tokens = auth_service.create_tokens(user.id)
+    print(f"🎫 JWT tokens created:")
+    print(f"   Access: {tokens['access_token'][:30]}...")
+    print(f"   Refresh: {tokens['refresh_token'][:30]}...")
 
     # Vérifier si le profil est complet (numéro de téléphone None = profil incomplet)
     profile_complete = user.numero_telephone is not None
+    print(f"📋 Profile complete: {profile_complete}")
 
     # Rediriger vers le frontend avec les tokens
     if profile_complete:
@@ -189,6 +201,7 @@ async def google_callback(
             f"access_token={tokens['access_token']}&"
             f"refresh_token={tokens['refresh_token']}"
         )
+        print(f"➡️  Redirecting to: {frontend_url[:100]}...")
     else:
         # Profil incomplet - redirection vers page de complétion
         frontend_url = (
@@ -196,6 +209,7 @@ async def google_callback(
             f"access_token={tokens['access_token']}&"
             f"refresh_token={tokens['refresh_token']}"
         )
+        print(f"➡️  Redirecting to: {frontend_url[:100]}...")
 
     return RedirectResponse(url=frontend_url)
 
@@ -227,9 +241,18 @@ async def complete_profile(
             detail="Phone number already registered"
         )
 
-    # Mettre à jour le profil
+    # Mettre à jour le profil avec tous les champs
     current_user.numero_telephone = profile_data.numero_telephone
     current_user.date_naissance = profile_data.date_naissance
+
+    # Champs optionnels
+    if profile_data.document_identite:
+        current_user.document_identite = profile_data.document_identite
+    if profile_data.nationalite:
+        current_user.nationalite = profile_data.nationalite
+    if profile_data.sexe:
+        current_user.sexe = profile_data.sexe
+
     current_user.is_active = True  # Activer le compte
 
     await db.commit()
@@ -237,3 +260,37 @@ async def complete_profile(
 
     print(f"✅ Profile completed successfully for user: {current_user.id}")
     return current_user
+
+
+@router.post("/forgot-password")
+async def forgot_password(
+    request_data: ForgotPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Demander la réinitialisation du mot de passe - envoie un OTP par email"""
+    await auth_service.request_password_reset(db, request_data.email)
+    return {"message": "If this email exists, an OTP has been sent"}
+
+
+@router.post("/verify-otp")
+async def verify_otp(
+    request_data: VerifyOTPRequest
+):
+    """Vérifier l'OTP pour la réinitialisation de mot de passe"""
+    await auth_service.verify_otp(request_data.email, request_data.otp)
+    return {"message": "OTP verified successfully"}
+
+
+@router.post("/reset-password")
+async def reset_password(
+    request_data: ResetPasswordRequest,
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """Réinitialiser le mot de passe avec l'OTP vérifié"""
+    await auth_service.reset_password(
+        db,
+        request_data.email,
+        request_data.otp,
+        request_data.new_password
+    )
+    return {"message": "Password reset successfully"}

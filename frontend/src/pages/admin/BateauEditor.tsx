@@ -1,13 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { 
-    Ship, 
-    Layers, 
-    Bed, 
-    DoorOpen, 
-    Plus, 
-    Trash2, 
-    ChevronRight, 
+import {
+    Ship,
+    Layers,
+    Bed,
+    DoorOpen,
+    Plus,
+    Trash2,
+    ChevronRight,
     ArrowLeft,
     CheckCircle2,
     Edit2,
@@ -20,6 +20,8 @@ import {
 } from 'lucide-react';
 import { cn } from '../../lib/utils';
 import AdminDataTable from '../../components/AdminDataTable';
+import ImageUploader from '../../components/ImageUploader';
+import GalleryUploader, { GalleryImage } from '../../components/GalleryUploader';
 
 interface Boat {
     id: string;
@@ -29,6 +31,7 @@ interface Boat {
     capacite_vehicules: number;
     en_maintenance: boolean;
     status: 'Actif' | 'Maintenance';
+    photo_principale?: string;
 }
 
 interface Level {
@@ -62,7 +65,7 @@ export default function AdminBateauEditor() {
     const [view, setView] = useState<'list' | 'detail' | 'create_boat'>('list');
     const [selectedBoat, setSelectedBoat] = useState<Boat | null>(null);
     const [activeLevelId, setActiveLevelId] = useState<string | null>(null);
-    
+
     // Modal States
     const [editingRoom, setEditingRoom] = useState<{ room: Room; isNew: boolean } | null>(null);
     const [editingBed, setEditingBed] = useState<{ roomId: string; bed: BedType; isNew: boolean } | null>(null);
@@ -80,7 +83,7 @@ export default function AdminBateauEditor() {
 
     const [editingBoat, setEditingBoat] = useState<{ boat: Boat; isNew: boolean } | null>(null);
     const [isSaving, setIsSaving] = useState(false);
-    
+
     // Wizard state
     const [wizardNewBoat, setWizardNewBoat] = useState<Boat | null>(null);
 
@@ -88,13 +91,13 @@ export default function AdminBateauEditor() {
         setSelectedBoat(boat);
         // Reset or load levels for this boat. By default, start with NIVEAU 1
         const initialLevels: Level[] = [
-            { 
-                id: 'L1', 
-                number: 1, 
-                nom: 'NIVEAU 1', 
+            {
+                id: 'L1',
+                number: 1,
+                nom: 'NIVEAU 1',
                 multiplicateur_prix: 1.0,
                 description: 'Niveau principal du bateau.',
-                rooms: [] 
+                rooms: []
             }
         ];
         setBoatLevels(initialLevels);
@@ -292,8 +295,8 @@ export default function AdminBateauEditor() {
         { key: 'immatriculation', label: 'Immatriculation' },
         { key: 'capacite_passagers', label: 'Passagers', render: (val: number) => <span className="font-mono text-white/60">{val} Pers.</span> },
         { key: 'capacite_vehicules', label: 'Véhicules', render: (val: number) => <span className="font-mono text-white/60">{val} Unit.</span> },
-        { 
-            key: 'status', 
+        {
+            key: 'status',
             label: 'Statut',
             render: (val: string) => (
                 <div className={cn(
@@ -310,20 +313,20 @@ export default function AdminBateauEditor() {
             render: (_: any, row: Boat) => (
                 <div className="flex items-center gap-6">
                     <div className="flex items-center gap-4">
-                        <button 
+                        <button
                             onClick={(e) => { e.stopPropagation(); setEditingBoat({ boat: { ...row }, isNew: false }); }}
                             className="flex items-center gap-2 text-white/40 hover:text-white transition-colors archivo-black text-[9px] uppercase tracking-widest"
                         >
                             <Edit2 className="w-3.5 h-3.5" /> Modifier
                         </button>
-                        <button 
+                        <button
                             onClick={() => handleSelectBoat(row)}
                             className="flex items-center gap-2 text-accent hover:text-white transition-colors archivo-black text-[9px] uppercase tracking-widest group"
                         >
                             <Layers className="w-3.5 h-3.5" /> Structure
                         </button>
                     </div>
-                    <button 
+                    <button
                         onClick={(e) => deleteBoat(row.id, e)}
                         className="flex items-center gap-2 text-red-500/40 hover:text-red-500 transition-colors archivo-black text-[9px] uppercase tracking-widest pl-6 border-l border-white/10"
                     >
@@ -342,7 +345,7 @@ export default function AdminBateauEditor() {
                         <h1 className="archivo-black text-4xl text-white uppercase italic tracking-tighter leading-none mb-4">Gestion des Bateaux</h1>
                         <p className="text-white/30 text-xs font-black uppercase tracking-widest italic border-l-2 border-accent pl-4">Administration de la flotte et des configurations structurelles</p>
                     </div>
-                    <button 
+                    <button
                         onClick={openAddBoat}
                         className="h-12 px-8 rounded-2xl bg-accent text-primary archivo-black text-[10px] uppercase tracking-widest italic hover:bg-white transition-all flex items-center gap-3"
                     >
@@ -350,7 +353,7 @@ export default function AdminBateauEditor() {
                     </button>
                 </div>
 
-                <AdminDataTable 
+                <AdminDataTable
                     title="Liste des Bateaux"
                     subtitle="Configuration des actifs navals"
                     columns={columns}
@@ -365,7 +368,7 @@ export default function AdminBateauEditor() {
         return (
             <div className="space-y-12">
                 <div className="flex items-center gap-8">
-                    <button 
+                    <button
                         onClick={() => setView('list')}
                         className="w-12 h-12 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 transition-all text-white/40"
                     >
@@ -381,7 +384,7 @@ export default function AdminBateauEditor() {
                     <div className="space-y-6">
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Nom du Bateau</label>
-                            <input 
+                            <input
                                 type="text"
                                 value={wizardNewBoat.nom}
                                 onChange={(e) => setWizardNewBoat({ ...wizardNewBoat, nom: e.target.value })}
@@ -390,7 +393,7 @@ export default function AdminBateauEditor() {
                         </div>
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Immatriculation</label>
-                            <input 
+                            <input
                                 type="text"
                                 value={wizardNewBoat.immatriculation}
                                 onChange={(e) => setWizardNewBoat({ ...wizardNewBoat, immatriculation: e.target.value })}
@@ -400,7 +403,7 @@ export default function AdminBateauEditor() {
                         <div className="grid grid-cols-2 gap-6">
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Passagers</label>
-                                <input 
+                                <input
                                     type="number"
                                     value={wizardNewBoat.capacite_passagers}
                                     onChange={(e) => setWizardNewBoat({ ...wizardNewBoat, capacite_passagers: Number(e.target.value) })}
@@ -409,7 +412,7 @@ export default function AdminBateauEditor() {
                             </div>
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Véhicules</label>
-                                <input 
+                                <input
                                     type="number"
                                     value={wizardNewBoat.capacite_vehicules}
                                     onChange={(e) => setWizardNewBoat({ ...wizardNewBoat, capacite_vehicules: Number(e.target.value) })}
@@ -418,7 +421,7 @@ export default function AdminBateauEditor() {
                             </div>
                         </div>
 
-                        <button 
+                        <button
                             onClick={() => {
                                 setBoats([...boats, wizardNewBoat]);
                                 handleSelectBoat(wizardNewBoat);
@@ -439,7 +442,7 @@ export default function AdminBateauEditor() {
         <div className="space-y-12">
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-8">
                 <div className="flex items-center gap-8">
-                    <button 
+                    <button
                         onClick={() => setView('list')}
                         className="w-12 h-12 rounded-2xl bg-white/5 border border-white/5 flex items-center justify-center hover:bg-white/10 transition-all text-white/40"
                     >
@@ -456,13 +459,13 @@ export default function AdminBateauEditor() {
                 </div>
 
                 <div className="flex gap-4">
-                    <button 
+                    <button
                         onClick={() => selectedBoat && setEditingBoat({ boat: { ...selectedBoat }, isNew: false })}
                         className="h-12 px-6 rounded-2xl bg-white/5 border border-white/5 text-[9px] font-black uppercase text-white/40 hover:text-white transition-all flex items-center gap-3"
                     >
                         <Edit2 className="w-4 h-4" /> Modifier le bateau
                     </button>
-                    <button 
+                    <button
                         onClick={handleSaveStructure}
                         disabled={isSaving}
                         className={cn(
@@ -482,7 +485,7 @@ export default function AdminBateauEditor() {
                     <div className="bg-white/5 border border-white/5 rounded-[40px] p-8 space-y-8 sticky top-8">
                         <div className="flex items-center justify-between">
                             <h3 className="archivo-black text-xs text-white/30 uppercase tracking-[0.2em] italic leading-none">Niveaux du Bateau</h3>
-                            <button 
+                            <button
                                 onClick={addNiveau}
                                 className="w-8 h-8 rounded-xl bg-accent/20 border border-accent/20 flex items-center justify-center text-accent hover:bg-accent hover:text-primary transition-all"
                             >
@@ -492,7 +495,7 @@ export default function AdminBateauEditor() {
 
                         <div className="space-y-3">
                             {boatLevels.map((level) => (
-                                <button 
+                                <button
                                     key={level.id}
                                     onClick={() => setActiveLevelId(level.id)}
                                     className={cn(
@@ -508,9 +511,9 @@ export default function AdminBateauEditor() {
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-3">
-                                        <Trash2 
+                                        <Trash2
                                             onClick={(e) => removeNiveau(level.id, e)}
-                                            className={cn("w-3.5 h-3.5 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all", activeLevelId === level.id ? "text-primary" : "text-red-500")} 
+                                            className={cn("w-3.5 h-3.5 opacity-0 group-hover:opacity-40 hover:!opacity-100 transition-all", activeLevelId === level.id ? "text-primary" : "text-red-500")}
                                         />
                                         <ChevronRight className={cn("w-4 h-4 transition-all", activeLevelId === level.id ? "text-primary" : "text-white/10 group-hover:translate-x-1")} />
                                     </div>
@@ -524,7 +527,7 @@ export default function AdminBateauEditor() {
                 <div className="lg:col-span-3">
                     <div className="bg-white/5 border border-white/5 rounded-[48px] p-10 min-h-[700px] flex flex-col gap-12 relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-[600px] h-[600px] bg-accent/5 rounded-full blur-[150px] -mr-64 -mt-64 pointer-events-none" />
-                        
+
                         <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
                             <div className="space-y-4">
                                 <div className="flex items-center gap-5">
@@ -541,7 +544,7 @@ export default function AdminBateauEditor() {
                                 </div>
                             </div>
 
-                            <button 
+                            <button
                                 onClick={openAddChambre}
                                 className="h-16 px-10 rounded-[28px] bg-accent text-primary archivo-black text-xs uppercase tracking-widest italic flex items-center gap-3 shadow-xl shadow-accent/5 hover:scale-105 transition-all active:scale-95"
                             >
@@ -579,14 +582,14 @@ export default function AdminBateauEditor() {
                                                 <Bed className="w-3.5 h-3.5" />
                                                 <span>Lits ({room.beds.length})</span>
                                             </div>
-                                            <button 
+                                            <button
                                                 onClick={() => openAddLit(room.id)}
                                                 className="w-6 h-6 rounded-lg bg-white/5 flex items-center justify-center text-white/20 hover:text-accent hover:bg-white/10 transition-all font-black"
                                             >
                                                 <Plus className="w-3 h-3" />
                                             </button>
                                         </div>
-                                        
+
                                         <div className="space-y-3">
                                             {room.beds.map((bed) => (
                                                 <div key={bed.id} className="flex items-center justify-between p-4 bg-white/3 rounded-2xl border border-white/5 group/bed hover:bg-white/5 transition-all">
@@ -600,13 +603,13 @@ export default function AdminBateauEditor() {
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-3">
-                                                        <button 
+                                                        <button
                                                             onClick={() => openEditLit(room.id, bed)}
                                                             className="w-8 h-8 rounded-lg bg-white/5 text-white/20 hover:text-accent hover:bg-white/10 transition-all opacity-0 group-hover/bed:opacity-100"
                                                         >
                                                             <Edit2 className="w-3.5 h-3.5" />
                                                         </button>
-                                                        <button 
+                                                        <button
                                                             onClick={() => removeLit(room.id, bed.id)}
                                                             className="w-8 h-8 rounded-lg bg-red-500/5 text-red-500/20 hover:text-red-500 hover:bg-red-500/10 transition-all opacity-0 group-hover/bed:opacity-100"
                                                         >
@@ -638,13 +641,13 @@ export default function AdminBateauEditor() {
                                     </div>
 
                                     <div className="pt-6 flex gap-4 opacity-0 group-hover:opacity-100 transition-all translate-y-2 group-hover:translate-y-0">
-                                        <button 
+                                        <button
                                             onClick={() => openEditChambre(room)}
                                             className="flex-1 h-12 rounded-2xl bg-white/5 border border-white/5 text-[10px] font-black uppercase text-white/40 hover:text-white hover:bg-white/10 transition-all"
                                         >
                                             Éditer Chambre
                                         </button>
-                                        <button 
+                                        <button
                                             onClick={() => removeChambre(room.id)}
                                             className="w-12 h-12 rounded-2xl bg-red-500/10 border border-red-500/20 text-red-500 flex items-center justify-center hover:bg-red-500 hover:text-primary transition-all"
                                         >
@@ -655,7 +658,7 @@ export default function AdminBateauEditor() {
                             ))}
 
                             {/* Dynamic Room Adder Card */}
-                            <button 
+                            <button
                                 onClick={openAddChambre}
                                 className="aspect-[4/5] flex flex-col items-center justify-center gap-8 rounded-[48px] border-2 border-dashed border-white/5 hover:border-accent/40 hover:bg-accent/5 transition-all group"
                             >
@@ -675,34 +678,34 @@ export default function AdminBateauEditor() {
             {/* Modals */}
             <AnimatePresence>
                 {editingRoom && (
-                    <RoomModal 
-                        room={editingRoom.room} 
-                        isNew={editingRoom.isNew} 
-                        onClose={() => setEditingRoom(null)} 
-                        onSave={saveRoom} 
+                    <RoomModal
+                        room={editingRoom.room}
+                        isNew={editingRoom.isNew}
+                        onClose={() => setEditingRoom(null)}
+                        onSave={saveRoom}
                     />
                 )}
                 {editingBed && (
-                    <BedModal 
-                        bed={editingBed.bed} 
-                        isNew={editingBed.isNew} 
-                        onClose={() => setEditingBed(null)} 
-                        onSave={saveBed} 
+                    <BedModal
+                        bed={editingBed.bed}
+                        isNew={editingBed.isNew}
+                        onClose={() => setEditingBed(null)}
+                        onSave={saveBed}
                     />
                 )}
                 {editingBoat && (
-                    <BoatModal 
-                        boat={editingBoat.boat} 
-                        isNew={editingBoat.isNew} 
-                        onClose={() => setEditingBoat(null)} 
+                    <BoatModal
+                        boat={editingBoat.boat}
+                        isNew={editingBoat.isNew}
+                        onClose={() => setEditingBoat(null)}
                         onSave={saveBoat}
                         handleSelectBoat={handleSelectBoat}
                     />
                 )}
                 {selectedBoatDetails && (
-                    <BoatDetailModal 
-                        boat={selectedBoatDetails} 
-                        onClose={() => setSelectedBoatDetails(null)} 
+                    <BoatDetailModal
+                        boat={selectedBoatDetails}
+                        onClose={() => setSelectedBoatDetails(null)}
                     />
                 )}
             </AnimatePresence>
@@ -719,14 +722,14 @@ interface BoatDetailModalProps {
 function BoatDetailModal({ boat, onClose }: BoatDetailModalProps) {
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={onClose}
                 className="absolute inset-0 bg-[#010312]/90 backdrop-blur-xl"
             />
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -759,7 +762,7 @@ function BoatDetailModal({ boat, onClose }: BoatDetailModalProps) {
                             </div>
                         </div>
                     </div>
-                    <button 
+                    <button
                         onClick={onClose}
                         className="w-full h-16 rounded-[24px] bg-accent text-primary archivo-black text-sm uppercase tracking-widest italic hover:bg-white transition-all"
                     >
@@ -783,21 +786,159 @@ interface BoatModalProps {
 
 function BoatModal({ boat, isNew, onClose, onSave, handleSelectBoat }: BoatModalProps) {
     const [formData, setFormData] = useState<Boat>(boat);
+    const [galleryImages, setGalleryImages] = useState<GalleryImage[]>([]);
+    const [loadingGallery, setLoadingGallery] = useState(false);
+
+    // Load gallery images when editing existing boat
+    useEffect(() => {
+        if (!isNew && boat.id) {
+            loadGalleryImages();
+        }
+    }, [boat.id, isNew]);
+
+    const loadGalleryImages = async () => {
+        try {
+            setLoadingGallery(true);
+            const token = localStorage.getItem('access_token');
+
+            // Convert boat ID to number if it's a string starting with 'B'
+            const boatIdNum = boat.id.startsWith('B') ? parseInt(boat.id.substring(1)) : parseInt(boat.id);
+
+            const response = await fetch(`http://localhost:8000/bateaux/${boatIdNum}/images`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+            });
+            if (response.ok) {
+                const data = await response.json();
+                setGalleryImages(data.images || []);
+            }
+        } catch (error) {
+            console.error('Error loading gallery:', error);
+        } finally {
+            setLoadingGallery(false);
+        }
+    };
+
+    const handleMainPhotoUpload = async (file: File): Promise<string> => {
+        if (!boat.id) {
+            throw new Error('Le bateau doit être créé avant d\'ajouter des photos');
+        }
+
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            throw new Error('Vous devez être connecté en tant qu\'admin pour uploader des photos');
+        }
+
+        // Convert boat ID to number if it's a string starting with 'B'
+        const boatIdNum = boat.id.startsWith('B') ? parseInt(boat.id.substring(1)) : parseInt(boat.id);
+
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', file);
+        formDataUpload.append('est_principale', 'true');
+        formDataUpload.append('ordre', '0');
+
+        const response = await fetch(`http://localhost:8000/bateaux/${boatIdNum}/images/upload`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formDataUpload,
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Erreur lors de l\'upload de la photo principale');
+        }
+
+        const data = await response.json();
+        setFormData({ ...formData, photo_principale: data.url });
+        return data.url;
+    };
+
+    const handleGalleryAdd = async (file: File, legende?: string): Promise<void> => {
+        if (!boat.id) {
+            throw new Error('Le bateau doit être créé avant d\'ajouter des photos');
+        }
+
+        const token = localStorage.getItem('access_token');
+        if (!token) {
+            throw new Error('Vous devez être connecté en tant qu\'admin pour uploader des photos');
+        }
+
+        // Convert boat ID to number if it's a string starting with 'B'
+        const boatIdNum = boat.id.startsWith('B') ? parseInt(boat.id.substring(1)) : parseInt(boat.id);
+
+        const formDataUpload = new FormData();
+        formDataUpload.append('file', file);
+        formDataUpload.append('est_principale', 'false');
+        formDataUpload.append('ordre', String(galleryImages.length));
+        if (legende) {
+            formDataUpload.append('legende', legende);
+        }
+
+        const response = await fetch(`http://localhost:8000/bateaux/${boatIdNum}/images/upload`, {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`
+            },
+            body: formDataUpload,
+        });
+
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            throw new Error(errorData.detail || 'Erreur lors de l\'upload de l\'image');
+        }
+
+        const data = await response.json();
+        setGalleryImages([...galleryImages, {
+            id: data.id,
+            url: data.url,
+            legende: data.legende
+        }]);
+    };
+
+    const handleGalleryRemove = async (id: string | number) => {
+        if (!boat.id) return;
+
+        const token = localStorage.getItem('access_token');
+        if (!token) return;
+
+        // Convert boat ID to number if it's a string starting with 'B'
+        const boatIdNum = boat.id.startsWith('B') ? parseInt(boat.id.substring(1)) : parseInt(boat.id);
+
+        try {
+            const response = await fetch(`http://localhost:8000/bateaux/${boatIdNum}/images/${id}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${token}`
+                }
+            });
+
+            if (response.ok) {
+                setGalleryImages(galleryImages.filter(img => img.id !== id));
+            }
+        } catch (error) {
+            console.error('Error removing image:', error);
+        }
+    };
+
+    const handleMainPhotoRemove = () => {
+        setFormData({ ...formData, photo_principale: undefined });
+    };
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={onClose}
                 className="absolute inset-0 bg-[#010312]/90 backdrop-blur-xl"
             />
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
-                className="relative w-full max-w-xl bg-[#0A0C1A] border border-white/5 rounded-[48px] overflow-hidden shadow-2xl"
+                className="relative w-full max-w-xl bg-[#0A0C1A] border border-white/5 rounded-[48px] overflow-hidden shadow-2xl max-h-[90vh] overflow-y-auto"
             >
                 <div className="p-12 space-y-12">
                     <div className="flex items-center justify-between">
@@ -820,7 +961,7 @@ function BoatModal({ boat, isNew, onClose, onSave, handleSelectBoat }: BoatModal
                     <div className="space-y-6">
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Nom du Bateau</label>
-                            <input 
+                            <input
                                 type="text"
                                 value={formData.nom}
                                 onChange={(e) => setFormData({ ...formData, nom: e.target.value })}
@@ -829,7 +970,7 @@ function BoatModal({ boat, isNew, onClose, onSave, handleSelectBoat }: BoatModal
                         </div>
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Immatriculation</label>
-                            <input 
+                            <input
                                 type="text"
                                 value={formData.immatriculation}
                                 onChange={(e) => setFormData({ ...formData, immatriculation: e.target.value })}
@@ -839,7 +980,7 @@ function BoatModal({ boat, isNew, onClose, onSave, handleSelectBoat }: BoatModal
                         <div className="grid grid-cols-2 gap-6">
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Passagers</label>
-                                <input 
+                                <input
                                     type="number"
                                     value={formData.capacite_passagers}
                                     onChange={(e) => setFormData({ ...formData, capacite_passagers: Number(e.target.value) })}
@@ -848,7 +989,7 @@ function BoatModal({ boat, isNew, onClose, onSave, handleSelectBoat }: BoatModal
                             </div>
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Véhicules</label>
-                                <input 
+                                <input
                                     type="number"
                                     value={formData.capacite_vehicules}
                                     onChange={(e) => setFormData({ ...formData, capacite_vehicules: Number(e.target.value) })}
@@ -859,7 +1000,7 @@ function BoatModal({ boat, isNew, onClose, onSave, handleSelectBoat }: BoatModal
 
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Statut Opérationnel</label>
-                            <select 
+                            <select
                                 value={formData.status}
                                 onChange={(e) => setFormData({ ...formData, status: e.target.value as any, en_maintenance: e.target.value === 'Maintenance' })}
                                 className="w-full h-14 bg-white/3 border border-white/5 rounded-2xl px-6 text-sm font-bold text-white focus:border-accent/40 outline-none transition-all appearance-none"
@@ -868,6 +1009,39 @@ function BoatModal({ boat, isNew, onClose, onSave, handleSelectBoat }: BoatModal
                                 <option value="Maintenance">MAINTENANCE / RÉPARATION</option>
                             </select>
                         </div>
+
+                        {/* Photo principale - Only show if boat exists */}
+                        {!isNew && (
+                            <>
+                                <div className="pt-6 border-t border-white/5">
+                                    <ImageUploader
+                                        label="Photo Principale"
+                                        currentImage={formData.photo_principale}
+                                        onUpload={handleMainPhotoUpload}
+                                        onRemove={handleMainPhotoRemove}
+                                        maxSize={5}
+                                    />
+                                </div>
+
+                                {/* Gallery */}
+                                <div className="pt-6">
+                                    <GalleryUploader
+                                        images={galleryImages}
+                                        onAdd={handleGalleryAdd}
+                                        onRemove={handleGalleryRemove}
+                                        maxImages={10}
+                                    />
+                                </div>
+                            </>
+                        )}
+
+                        {isNew && (
+                            <div className="bg-accent/5 border border-accent/20 rounded-2xl p-6 mt-6">
+                                <p className="text-xs text-accent/60 italic text-center">
+                                    💡 Les photos pourront être ajoutées après la création du bateau
+                                </p>
+                            </div>
+                        )}
                     </div>
 
                     <div className="flex gap-4 pt-8">
@@ -879,13 +1053,13 @@ function BoatModal({ boat, isNew, onClose, onSave, handleSelectBoat }: BoatModal
                                 <Layers className="w-4 h-4" /> Structure
                             </button>
                         )}
-                        <button 
+                        <button
                             onClick={onClose}
                             className="flex-1 h-16 rounded-[24px] border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/40 hover:bg-white/5 transition-all"
                         >
                             Annuler
                         </button>
-                        <button 
+                        <button
                             onClick={() => onSave(formData)}
                             className="flex-1 h-16 rounded-[24px] bg-accent text-primary archivo-black text-sm uppercase tracking-widest italic hover:bg-white transition-all shadow-xl shadow-accent/5"
                         >
@@ -910,14 +1084,14 @@ function RoomModal({ room, isNew, onClose, onSave }: RoomModalProps) {
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={onClose}
                 className="absolute inset-0 bg-[#010312]/90 backdrop-blur-xl"
             />
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -945,7 +1119,7 @@ function RoomModal({ room, isNew, onClose, onSave }: RoomModalProps) {
                         {/* Chambre Info */}
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Numéro de Chambre</label>
-                            <input 
+                            <input
                                 type="text"
                                 value={formData.numero_chambre}
                                 onChange={(e) => setFormData({ ...formData, numero_chambre: e.target.value })}
@@ -954,7 +1128,7 @@ function RoomModal({ room, isNew, onClose, onSave }: RoomModalProps) {
                         </div>
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Type de Chambre</label>
-                            <select 
+                            <select
                                 value={formData.type_chambre}
                                 onChange={(e) => setFormData({ ...formData, type_chambre: e.target.value as any })}
                                 className="w-full h-14 bg-white/3 border border-white/5 rounded-2xl px-6 text-sm font-bold text-white focus:border-accent/40 outline-none transition-all appearance-none"
@@ -966,7 +1140,7 @@ function RoomModal({ room, isNew, onClose, onSave }: RoomModalProps) {
                         </div>
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Prix de Base ($)</label>
-                            <input 
+                            <input
                                 type="number"
                                 value={formData.prix_base}
                                 onChange={(e) => setFormData({ ...formData, prix_base: Number(e.target.value) })}
@@ -976,7 +1150,7 @@ function RoomModal({ room, isNew, onClose, onSave }: RoomModalProps) {
 
                         {/* Toggles */}
                         <div className="grid grid-cols-1 gap-4 pt-4">
-                            <button 
+                            <button
                                 onClick={() => setFormData({ ...formData, fenetre: !formData.fenetre })}
                                 className={cn(
                                     "flex items-center justify-between p-4 rounded-2xl border transition-all",
@@ -989,7 +1163,7 @@ function RoomModal({ room, isNew, onClose, onSave }: RoomModalProps) {
                                 </div>
                                 {formData.fenetre ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
                             </button>
-                            <button 
+                            <button
                                 onClick={() => setFormData({ ...formData, salle_de_bain: !formData.salle_de_bain })}
                                 className={cn(
                                     "flex items-center justify-between p-4 rounded-2xl border transition-all",
@@ -1006,13 +1180,13 @@ function RoomModal({ room, isNew, onClose, onSave }: RoomModalProps) {
                     </div>
 
                     <div className="flex gap-4 pt-8">
-                        <button 
+                        <button
                             onClick={onClose}
                             className="flex-1 h-16 rounded-[24px] border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/40 hover:bg-white/5 transition-all"
                         >
                             Annuler
                         </button>
-                        <button 
+                        <button
                             onClick={() => onSave(formData)}
                             className="flex-1 h-16 rounded-[24px] bg-accent text-primary archivo-black text-sm uppercase tracking-widest italic hover:bg-white transition-all shadow-xl shadow-accent/5"
                         >
@@ -1037,14 +1211,14 @@ function BedModal({ bed, isNew, onClose, onSave }: BedModalProps) {
 
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center p-6">
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 onClick={onClose}
                 className="absolute inset-0 bg-[#010312]/90 backdrop-blur-xl"
             />
-            <motion.div 
+            <motion.div
                 initial={{ opacity: 0, scale: 0.9, y: 20 }}
                 animate={{ opacity: 1, scale: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -1072,7 +1246,7 @@ function BedModal({ bed, isNew, onClose, onSave }: BedModalProps) {
                         <div className="grid grid-cols-2 gap-6">
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Référence Lit</label>
-                                <input 
+                                <input
                                     type="text"
                                     value={formData.numero_lit}
                                     onChange={(e) => setFormData({ ...formData, numero_lit: e.target.value })}
@@ -1082,7 +1256,7 @@ function BedModal({ bed, isNew, onClose, onSave }: BedModalProps) {
                             </div>
                             <div className="space-y-3">
                                 <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Taille (cm)</label>
-                                <input 
+                                <input
                                     type="text"
                                     value={formData.taille}
                                     onChange={(e) => setFormData({ ...formData, taille: e.target.value })}
@@ -1094,7 +1268,7 @@ function BedModal({ bed, isNew, onClose, onSave }: BedModalProps) {
 
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Type de Lit</label>
-                            <select 
+                            <select
                                 value={formData.type_lit}
                                 onChange={(e) => setFormData({ ...formData, type_lit: e.target.value as any })}
                                 className="w-full h-14 bg-white/3 border border-white/5 rounded-2xl px-6 text-sm font-bold text-white focus:border-accent/40 outline-none transition-all appearance-none"
@@ -1107,7 +1281,7 @@ function BedModal({ bed, isNew, onClose, onSave }: BedModalProps) {
 
                         <div className="space-y-3">
                             <label className="text-[10px] font-black text-white/30 uppercase tracking-widest italic px-2">Supplément Prix ($)</label>
-                            <input 
+                            <input
                                 type="number"
                                 value={formData.prix_supplementaire}
                                 onChange={(e) => setFormData({ ...formData, prix_supplementaire: Number(e.target.value) })}
@@ -1117,13 +1291,13 @@ function BedModal({ bed, isNew, onClose, onSave }: BedModalProps) {
                     </div>
 
                     <div className="flex gap-4 pt-8">
-                        <button 
+                        <button
                             onClick={onClose}
                             className="flex-1 h-16 rounded-[24px] border border-white/5 text-[10px] font-black uppercase tracking-widest text-white/40 hover:bg-white/5 transition-all"
                         >
                             Annuler
                         </button>
-                        <button 
+                        <button
                             onClick={() => onSave(formData)}
                             className="flex-1 h-16 rounded-[24px] bg-accent text-primary archivo-black text-sm uppercase tracking-widest italic hover:bg-white transition-all shadow-xl shadow-accent/5"
                         >
