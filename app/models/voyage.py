@@ -9,7 +9,7 @@ from app.models.base import Base
 if TYPE_CHECKING:
     from app.models.compagnie import CompagnieBateau, Bateau
     from app.models.geographie import Port
-    from app.models.route import Route
+    from app.models.traversee import Traversee
     from app.models.reservation import Reservation
 
 
@@ -30,7 +30,7 @@ class ProgrammeVoyage(Base):
     compagnie_id: Mapped[int] = mapped_column(Integer, ForeignKey("compagnie_bateau.id"), nullable=False, index=True)
     port_depart_id: Mapped[int] = mapped_column(Integer, ForeignKey("port.id"), nullable=False, index=True)
     port_arrivee_id: Mapped[int] = mapped_column(Integer, ForeignKey("port.id"), nullable=False, index=True)
-    route_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("route.id"), nullable=True, index=True)
+    route_id: Mapped[int | None] = mapped_column(Integer, ForeignKey("traversee.id"), nullable=True, index=True)
 
     date_depart_reel: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     date_arrivee_reelle: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -72,8 +72,19 @@ class ProgrammeVoyage(Base):
         foreign_keys=[port_arrivee_id],
         back_populates="voyages_arrivee"
     )
-    route: Mapped["Route | None"] = relationship("Route", back_populates="voyages")
+    route: Mapped["Traversee | None"] = relationship("Traversee", back_populates="voyages")
     reservations: Mapped[List["Reservation"]] = relationship("Reservation", back_populates="voyage")
+
+    # Pricing relations
+    pricing_passagers: Mapped[List["PricingPassager"]] = relationship(
+        "PricingPassager", back_populates="voyage", cascade="all, delete-orphan"
+    )
+    pricing_vehicules: Mapped[List["PricingVehicule"]] = relationship(
+        "PricingVehicule", back_populates="voyage", cascade="all, delete-orphan"
+    )
+    pricing_colis: Mapped[List["PricingColis"]] = relationship(
+        "PricingColis", back_populates="voyage", cascade="all, delete-orphan"
+    )
 
     def get_disponibilite(self) -> Dict[str, Any]:
         """Retourne les disponibilités du voyage"""

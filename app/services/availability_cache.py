@@ -16,8 +16,10 @@ from app.models.voyage import ProgrammeVoyage
 from app.redis_client import redis_client
 
 
+import random
+
 CACHE_KEY_FMT = "voyage:disponibilite:{voyage_id}"
-DEFAULT_TTL = 10  # secondes
+DEFAULT_TTL = 10  # secondes (jitter aléatoire ajouté au moment du set)
 
 
 async def get_voyage_availability(
@@ -40,7 +42,10 @@ async def get_voyage_availability(
         return None
 
     data = voyage.get_disponibilite()
-    await redis_client.set(key, data, ttl=ttl)
+    # Ajouter un jitter aléatoire (±20%) pour éviter le cache stampede
+    jitter = random.uniform(-0.2, 0.2)
+    effective_ttl = max(1, int(ttl * (1 + jitter)))
+    await redis_client.set(key, data, ttl=effective_ttl)
     return data
 
 

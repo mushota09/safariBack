@@ -153,17 +153,25 @@ class TraverseeService:
                 "id": bateau.id,
                 "nom": bateau.nom,
                 "capacite_passagers": bateau.capacite_passagers,
-                "capacite_vehicules": bateau.capacite_vehicules,
+                "capacites_vehicules": [
+                    {
+                        "type_vehicule_id": cap.type_vehicule_id,
+                        "capacite": cap.capacite
+                    }
+                    for cap in bateau.capacites_vehicules
+                ] if bateau.capacites_vehicules else [],
                 "immatriculation": bateau.immatriculation,
                 "vitesse_croisiere": bateau.vitesse_croisiere,
                 "longueur": bateau.longueur,
+                "largeur": getattr(bateau, "largeur", None),
+                "tonnage": getattr(bateau, "tonnage", None),
                 "tirant_eau": bateau.tirant_eau,
                 "puissance_moteur": bateau.puissance_moteur,
-                "clim": bateau.clim,
                 "wifi": bateau.wifi,
                 "restaurant": bateau.restaurant,
                 "boutique": bateau.boutique,
-                "cabines": bateau.cabines,
+                "jeux": getattr(bateau, "jeux", False),
+                "salon_coiffure": getattr(bateau, "salon_coiffure", False),
                 "en_maintenance": bateau.en_maintenance,
                 "date_derniere_revision": bateau.date_derniere_revision,
                 "date_prochaine_revision": bateau.date_prochaine_revision,

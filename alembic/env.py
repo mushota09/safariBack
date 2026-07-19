@@ -14,7 +14,7 @@ from app.models.base import Base
 from app.models.geographie import Pays, Ville, Port
 from app.models.utilisateur import Utilisateur
 from app.models.compagnie import CompagnieBateau, TypeBateau, Bateau, Niveau, Chambre, Lit
-from app.models.route import Route, TarifSaisonnier
+from app.models.traversee import Traversee, TarifSaisonnier
 from app.models.voyage import ProgrammeVoyage
 from app.models.reservation import Reservation, ReservationPassager, ReservationVehicule
 from app.models.paiement import Paiement

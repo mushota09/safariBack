@@ -14,7 +14,8 @@ from app.database import async_session_maker, engine
 from app.models.base import Base
 from app.models.geographie import Pays, Ville, Port
 from app.models.compagnie import CompagnieBateau, TypeBateau, Bateau, Niveau, Chambre, Lit
-from app.models.route import Route, TarifSaisonnier
+from app.models.traversee import Traversee as Route
+from app.models.traversee import TarifSaisonnier
 from app.models.voyage import ProgrammeVoyage
 
 

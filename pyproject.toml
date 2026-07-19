@@ -4,7 +4,7 @@ version = "1.0.0"
 description = "API complète de réservation de billets de bateau"
 requires-python = ">=3.11"
 dependencies = [
-    "fastapi>=0.109.0",
+    "fastapi[standard]>=0.109.0",
     "uvicorn[standard]>=0.27.0",
     "sqlalchemy>=2.0.25",
     "asyncpg>=0.29.0",

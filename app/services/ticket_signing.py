@@ -104,25 +104,3 @@ def build_global_ticket(reservation_id: int, reference: str) -> tuple[str, Dict[
     }
     _, sig_hex, qr = sign_payload(payload)
     return numero, payload, sig_hex, qr
-
-
-def build_individual_ticket(
-    reservation_id: int,
-    reference: str,
-    passager_index: int,
-    kind: Literal["passager", "vehicule"] = "passager",
-) -> tuple[str, Dict[str, Any], str, str]:
-    """Construit un ticket individuel (passager ou véhicule)."""
-    prefix = "P" if kind == "passager" else "V"
-    numero = f"TKT-{prefix}-{uuid.uuid4().hex[:12].upper()}"
-    payload: Dict[str, Any] = {
-        "kind": kind,
-        "ticket": numero,
-        "reservation_id": reservation_id,
-        "reference": reference,
-        "index": passager_index,
-        "issued_at": datetime.utcnow().isoformat() + "Z",
-        "nonce": uuid.uuid4().hex,
-    }
-    _, sig_hex, qr = sign_payload(payload)
-    return numero, payload, sig_hex, qr

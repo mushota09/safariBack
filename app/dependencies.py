@@ -91,7 +91,7 @@ async def get_current_active_user(
     current_user: Annotated[Utilisateur, Depends(get_current_user)]
 ) -> Utilisateur:
     """Vérifie que l'utilisateur est actif"""
-    if not current_user.actif:
+    if not current_user.is_active:
         raise HTTPException(status_code=400, detail="Inactive user")
     return current_user
 

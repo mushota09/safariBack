@@ -6,13 +6,13 @@ from app.database import get_db
 from app.dependencies import get_current_user
 from app.models.utilisateur import Utilisateur
 from app.modules.reservation.schemas import (
-    ReservationCreate,
     ReservationUpdate,
     ReservationResponse,
     ReservationCancellation,
     BateauStructureResponse,
     ChambresDisponiblesResponse,
-    ReservationCreateMultiple
+    ReservationCreateUnified,
+    ReservationFrontCreate,
 )
 from app.modules.reservation.service import reservation_service
 
@@ -21,12 +21,22 @@ router = APIRouter(prefix="/reservations", tags=["Réservations"])
 
 @router.post("", response_model=ReservationResponse)
 async def create_reservation(
-    reservation_data: ReservationCreate,
+    reservation_data: ReservationCreateUnified,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[Utilisateur, Depends(get_current_user)]
 ):
-    """Crée une nouvelle réservation"""
-    return await reservation_service.create_reservation(db, current_user.id, reservation_data)
+    """Crée une nouvelle réservation unifiée (passager/vehicule/colis)"""
+    return await reservation_service.create_reservation_unified(db, current_user.id, reservation_data)
+
+
+@router.post("/front-office", response_model=ReservationResponse)
+async def create_front_office_reservation(
+    data: ReservationFrontCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[Utilisateur, Depends(get_current_user)]
+):
+    """Crée une réservation passager depuis le front office (3 cas : pour moi, moi+autres, autres)."""
+    return await reservation_service.create_front_office_reservation(db, current_user.id, data)
 
 
 @router.get("", response_model=List[ReservationResponse])
@@ -106,31 +116,3 @@ async def get_chambres_disponibles(
 ):
     """Récupère toutes les chambres disponibles (structure plate) pour un voyage"""
     return await reservation_service.get_chambres_disponibles(db, voyage_id)
-
-
-@router.post("/multiple", response_model=ReservationResponse)
-async def create_reservation_multiple(
-    reservation_data: ReservationCreateMultiple,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Utilisateur, Depends(get_current_user)]
-):
-    """Crée une réservation pour plusieurs passagers"""
-    return await reservation_service.create_reservation_multiple(db, current_user.id, reservation_data)
-
-
-@router.post("/{reservation_id}/passagers/{passager_id}/cancel")
-async def cancel_passager(
-    reservation_id: int,
-    passager_id: int,
-    cancellation_data: ReservationCancellation,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[Utilisateur, Depends(get_current_user)],
-):
-    """Annule un passager individuel d'une réservation de groupe."""
-    return await reservation_service.cancel_passager(
-        db,
-        reservation_id,
-        passager_id,
-        current_user.id,
-        cancellation_data.raison,
-    )

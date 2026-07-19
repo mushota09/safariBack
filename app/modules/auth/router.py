@@ -222,44 +222,8 @@ async def complete_profile(
     db: Annotated[AsyncSession, Depends(get_db)]
 ):
     """Compléter le profil après inscription Google OAuth"""
-    print(f"🔍 Complete profile called for user: {current_user.id} - {current_user.email}")
-    print(f"📞 Phone: {profile_data.numero_telephone}, DOB: {profile_data.date_naissance}")
-
-    # Vérifier que le numéro de téléphone n'est pas déjà utilisé
-    from sqlalchemy import select
-    result = await db.execute(
-        select(Utilisateur).where(
-            Utilisateur.numero_telephone == profile_data.numero_telephone,
-            Utilisateur.id != current_user.id
-        )
-    )
-    existing_user = result.scalar_one_or_none()
-
-    if existing_user:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Phone number already registered"
-        )
-
-    # Mettre à jour le profil avec tous les champs
-    current_user.numero_telephone = profile_data.numero_telephone
-    current_user.date_naissance = profile_data.date_naissance
-
-    # Champs optionnels
-    if profile_data.document_identite:
-        current_user.document_identite = profile_data.document_identite
-    if profile_data.nationalite:
-        current_user.nationalite = profile_data.nationalite
-    if profile_data.sexe:
-        current_user.sexe = profile_data.sexe
-
-    current_user.is_active = True  # Activer le compte
-
-    await db.commit()
-    await db.refresh(current_user)
-
-    print(f"✅ Profile completed successfully for user: {current_user.id}")
-    return current_user
+    user = await auth_service.complete_profile(db, current_user, profile_data)
+    return user
 
 
 @router.post("/forgot-password")

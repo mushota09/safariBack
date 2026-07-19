@@ -56,13 +56,18 @@ class RedisClient:
         return True
 
     async def delete_pattern(self, pattern: str) -> int:
-        """Supprimer toutes les clés correspondant au pattern"""
+        """Supprimer toutes les clés correspondant au pattern via SCAN (non-bloquant)"""
         if not self.redis:
             return 0
-        keys = await self.redis.keys(pattern)
-        if keys:
-            return await self.redis.delete(*keys)
-        return 0
+        deleted = 0
+        cursor = 0
+        while True:
+            cursor, keys = await self.redis.scan(cursor=cursor, match=pattern, count=100)
+            if keys:
+                deleted += await self.redis.delete(*keys)
+            if cursor == 0:
+                break
+        return deleted
 
     async def publish(self, channel: str, message: Any) -> int:
         """Publier un message sur un canal"""

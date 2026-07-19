@@ -5,7 +5,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.models.compagnie import CompagnieBateau, Bateau
 from app.models.geographie import Pays, Ville, Port
-from app.models.route import Route
+from app.models.traversee import Traversee as Route
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
 
 

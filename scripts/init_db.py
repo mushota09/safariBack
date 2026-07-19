@@ -16,7 +16,7 @@ from app.database import async_session_maker, init_db
 from app.models import *
 from app.models.geographie import Pays, Ville, Port
 from app.models.compagnie import CompagnieBateau, TypeBateau, Bateau, Niveau, Chambre, Lit, TypeLit
-from app.models.route import Route
+from app.models.traversee import Traversee as Route
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
 from app.models.utilisateur import Utilisateur
 from app.models.reservation import Reservation

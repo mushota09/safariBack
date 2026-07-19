@@ -6,7 +6,7 @@ from passlib.context import CryptContext
 from fastapi import HTTPException, status
 
 from app.models.utilisateur import Utilisateur
-from app.modules.auth.schemas import UserRegister, UserLogin
+from app.modules.auth.schemas import UserRegister, UserLogin, CompleteProfile
 from app.dependencies import create_access_token, create_refresh_token
 
 # Utiliser Argon2 au lieu de bcrypt (plus moderne, plus sécurisé, pas de limite de 72 bytes)
@@ -157,6 +157,48 @@ class AuthService:
             "refresh_token": refresh_token,
             "token_type": "bearer"
         }
+
+    async def complete_profile(
+        self,
+        db: AsyncSession,
+        user: Utilisateur,
+        profile_data: CompleteProfile,
+    ) -> Utilisateur:
+        """Complète le profil d'un utilisateur après inscription Google OAuth."""
+        from sqlalchemy import select
+
+        # Vérifier que le numéro de téléphone n'est pas déjà utilisé
+        result = await db.execute(
+            select(Utilisateur).where(
+                Utilisateur.numero_telephone == profile_data.numero_telephone,
+                Utilisateur.id != user.id
+            )
+        )
+        existing_user = result.scalar_one_or_none()
+
+        if existing_user:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Phone number already registered"
+            )
+
+        # Mettre à jour le profil
+        user.numero_telephone = profile_data.numero_telephone
+        user.date_naissance = profile_data.date_naissance
+
+        if profile_data.document_identite:
+            user.document_identite = profile_data.document_identite
+        if profile_data.nationalite:
+            user.nationalite = profile_data.nationalite
+        if profile_data.sexe:
+            user.sexe = profile_data.sexe
+
+        user.is_active = True
+
+        await db.commit()
+        await db.refresh(user)
+
+        return user
 
     async def change_password(
         self,

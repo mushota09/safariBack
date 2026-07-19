@@ -1,27 +1,55 @@
 # Models package
 from app.models.base import Base, ModeleDeBase
 from app.models.utilisateur import Utilisateur
-from app.models.compagnie import CompagnieBateau, TypeBateau, Bateau, Niveau, Chambre, Lit, TypeLit
+from app.models.compagnie import (
+    CompagnieBateau,
+    TypeBateau,
+    Bateau,
+    BateauCapaciteVehicule,
+    Niveau,
+    Chambre,
+    Lit,
+    TypeLit
+)
 from app.models.image_bateau import ImageBateau
 from app.models.geographie import Pays, Ville, Port
-from app.models.route import Route, TarifSaisonnier, TypeSaison
+from app.models.traversee import Traversee, TarifSaisonnier, TypeSaison
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
 from app.models.reservation import (
     Reservation,
     ReservationPassager,
     ReservationVehicule,
-    ReservationMode,
+    ReservationColis,
     StatutReservation,
     TypeReservation,
-    TypeVehicule,
+    ClassePassager,
 )
-from app.models.passager import Passager, StatutPassager
-from app.models.vehicule import VehiculeReservation
 from app.models.ticket import Ticket
 from app.models.paiement import Paiement, StatutPaiement, ModePaiement
 from app.models.promotion import Promotion, TypeReduction
 from app.models.document import DocumentVoyageur, TypeDocument
 from app.models.journal import Journal, NiveauLog
+from app.models.pricing import (
+    PricingPassager,
+    PricingVehicule,
+    PricingColis,
+    TypeVehicule,
+    ClassePassager as ClassePassagerPricing
+)
+from app.models.embarquement_log import EmbarquementLog, TypeActionEmbarquement
+from app.models.remboursement import (
+    Remboursement,
+    StatutRemboursement,
+    MethodeRemboursement
+)
+from app.models.equipage import (
+    EquipageRole,
+    Certification,
+    MembreEquipage,
+    EquipageCertification,
+    SexeEquipage,
+    StatutEquipage
+)
 
 __all__ = [
     "Base",
@@ -30,6 +58,7 @@ __all__ = [
     "CompagnieBateau",
     "TypeBateau",
     "Bateau",
+    "BateauCapaciteVehicule",
     "Niveau",
     "Chambre",
     "Lit",
@@ -38,7 +67,7 @@ __all__ = [
     "Pays",
     "Ville",
     "Port",
-    "Route",
+    "Traversee",
     "TarifSaisonnier",
     "TypeSaison",
     "ProgrammeVoyage",
@@ -46,13 +75,10 @@ __all__ = [
     "Reservation",
     "ReservationPassager",
     "ReservationVehicule",
-    "ReservationMode",
+    "ReservationColis",
     "StatutReservation",
     "TypeReservation",
-    "TypeVehicule",
-    "Passager",
-    "StatutPassager",
-    "VehiculeReservation",
+    "ClassePassager",
     "Ticket",
     "Paiement",
     "StatutPaiement",
@@ -63,4 +89,20 @@ __all__ = [
     "TypeDocument",
     "Journal",
     "NiveauLog",
+    "PricingPassager",
+    "PricingVehicule",
+    "PricingColis",
+    "TypeVehicule",
+    "ClassePassagerPricing",
+    "EmbarquementLog",
+    "TypeActionEmbarquement",
+    "Remboursement",
+    "StatutRemboursement",
+    "MethodeRemboursement",
+    "EquipageRole",
+    "Certification",
+    "MembreEquipage",
+    "EquipageCertification",
+    "SexeEquipage",
+    "StatutEquipage",
 ]

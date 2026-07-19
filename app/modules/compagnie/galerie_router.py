@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.database import get_db
-from app.dependencies import get_current_superuser
+from app.dependencies import get_current_superuser, get_admin_user
 from app.models.compagnie import Bateau
 from app.models.image_bateau import ImageBateau
 from app.models.utilisateur import Utilisateur
@@ -68,7 +68,7 @@ async def upload_image(
     est_principale: bool = Form(False),
     ordre: int = Form(0),
     db: Annotated[AsyncSession, Depends(get_db)] = None,
-    _: Annotated[Utilisateur, Depends(get_current_superuser)] = None,
+    _: Annotated[Utilisateur, Depends(get_admin_user)] = None,
 ):
     """Upload une image pour un bateau (admin)."""
     bateau = await _get_bateau_or_404(db, bateau_id)
@@ -113,7 +113,7 @@ async def add_image(
     bateau_id: int,
     image_data: ImageBateauCreate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _: Annotated[Utilisateur, Depends(get_current_superuser)],
+    _: Annotated[Utilisateur, Depends(get_admin_user)],
 ):
     """Ajoute une image à la galerie d'un bateau (admin)."""
     bateau = await _get_bateau_or_404(db, bateau_id)
@@ -147,7 +147,7 @@ async def update_image(
     image_id: int,
     image_data: ImageBateauUpdate,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _: Annotated[Utilisateur, Depends(get_current_superuser)],
+    _: Annotated[Utilisateur, Depends(get_admin_user)],
 ):
     """Met à jour une image (admin)."""
     result = await db.execute(
@@ -171,7 +171,7 @@ async def delete_image(
     bateau_id: int,
     image_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    _: Annotated[Utilisateur, Depends(get_current_superuser)],
+    _: Annotated[Utilisateur, Depends(get_admin_user)],
 ):
     """Supprime une image (admin)."""
     result = await db.execute(

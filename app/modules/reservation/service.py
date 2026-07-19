@@ -1,5 +1,6 @@
 import uuid
-from typing import List, Optional
+import json
+from typing import List, Optional, Dict
 from datetime import datetime, timedelta
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,164 +12,34 @@ from app.models.reservation import (
     Reservation,
     ReservationPassager,
     ReservationVehicule,
-    ReservationMode,
     StatutReservation,
+    TypeReservation,
+    ReservationColis,
+    ClassePassager,
 )
 from app.models.voyage import ProgrammeVoyage, StatutVoyage
 from app.models.utilisateur import Utilisateur
 from app.models.compagnie import Bateau, Niveau, Chambre, Lit
-from app.models.passager import Passager, StatutPassager
-from app.models.vehicule import VehiculeReservation
-from app.modules.reservation.schemas import ReservationCreate, ReservationUpdate, ReservationCreateMultiple, PassagerInfo
+from app.models.ticket import Ticket
+from app.modules.reservation.schemas import (
+    ReservationUpdate,
+    ReservationCreateUnified,
+    ReservationFrontCreate,
+    PassagerFrontInfo,
+    ColisCreateInfo,
+)
+from app.models.pricing import (
+    PricingPassager,
+    PricingVehicule,
+    PricingColis,
+)
 from app.redis_client import redis_client
 from app.websocket_manager import websocket_manager
+from app.services.qrcode import qrcode_service
+from app.services.ticket_signing import build_global_ticket
 
 
 class ReservationService:
-    async def create_reservation(
-        self,
-        db: AsyncSession,
-        user_id: int,
-        reservation_data: ReservationCreate
-    ) -> Reservation:
-        """Crée une nouvelle réservation avec verrou optimiste"""
-        # Récupérer le voyage avec verrou
-        query = (
-            select(ProgrammeVoyage)
-            .where(ProgrammeVoyage.id == reservation_data.voyage_id)
-            .options(selectinload(ProgrammeVoyage.bateau))
-            .with_for_update()
-        )
-
-        result = await db.execute(query)
-        voyage = result.scalar_one_or_none()
-
-        if not voyage:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Voyage not found"
-            )
-
-        # Vérifier le statut du voyage
-        if voyage.statut not in [StatutVoyage.programme, StatutVoyage.confirme]:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Voyage is {voyage.statut.value}, cannot make reservation"
-            )
-
-        # Vérifier les places disponibles
-        places_dispo_passagers = voyage.places_disponibles_passagers - voyage.places_vendues_passagers
-        places_dispo_vehicules = voyage.places_disponibles_vehicules - voyage.places_vendues_vehicules
-
-        if places_dispo_passagers < reservation_data.nombre_passagers:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    f"Plus assez de places passagers disponibles sur ce voyage "
-                    f"(restantes: {max(places_dispo_passagers, 0)}, demandées: {reservation_data.nombre_passagers})."
-                ),
-            )
-
-        if reservation_data.vehicule_inclus:
-            capacite_vehicules = getattr(voyage.bateau, "capacite_vehicules", None) if voyage.bateau else None
-            if not capacite_vehicules or capacite_vehicules <= 0:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Ce bateau ne supporte pas l'embarquement de véhicules.",
-                )
-            if places_dispo_vehicules < 1:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Plus aucune place véhicule n'est disponible sur ce voyage : "
-                        "d'autres passagers ont déjà réservé toutes les places véhicules."
-                    ),
-                )
-
-        # Calculer le montant total
-        montant_total = self._calculate_total_amount(voyage, reservation_data)
-
-        # Créer la réservation
-        reference = f"RES-{uuid.uuid4().hex[:12].upper()}"
-        expiration = datetime.utcnow() + timedelta(minutes=settings.RESERVATION_EXPIRATION_MINUTES)
-
-        reservation = Reservation(
-            reference_reservation=reference,
-            utilisateur_id=user_id,
-            voyage_id=reservation_data.voyage_id,
-            type_reservation=reservation_data.type_reservation,
-            reservation_mode=ReservationMode.moi_meme,
-            niveau_id=reservation_data.niveau_id,
-            chambre_id=reservation_data.chambre_id,
-            lit_id=reservation_data.lit_id,
-            montant_total=montant_total,
-            date_expiration_paiement=expiration,
-            nombre_passagers=reservation_data.nombre_passagers,
-            vehicule_inclus=reservation_data.vehicule_inclus,
-            type_vehicule=reservation_data.type_vehicule,
-            immatriculation_vehicule=reservation_data.immatriculation_vehicule,
-            statut_reservation=StatutReservation.en_attente
-        )
-
-        db.add(reservation)
-        await db.flush()
-
-        # Trace du passager principal (utilisateur connecté)
-        user_result = await db.execute(select(Utilisateur).where(Utilisateur.id == user_id))
-        utilisateur = user_result.scalar_one_or_none()
-        if utilisateur is not None:
-            db.add(
-                ReservationPassager(
-                    reservation_id=reservation.id,
-                    nom_complet=getattr(utilisateur, "nom_complet", None) or utilisateur.email,
-                    email=utilisateur.email,
-                    telephone=getattr(utilisateur, "numero_telephone", None),
-                    chambre_id=reservation_data.chambre_id,
-                    lit_id=reservation_data.lit_id,
-                    is_principal=True,
-                )
-            )
-
-        if reservation_data.vehicule_inclus and reservation_data.type_vehicule and reservation_data.immatriculation_vehicule:
-            db.add(
-                ReservationVehicule(
-                    reservation_id=reservation.id,
-                    type_vehicule=reservation_data.type_vehicule,
-                    immatriculation=reservation_data.immatriculation_vehicule.strip().upper(),
-                    proprietaire_nom=getattr(utilisateur, "nom_complet", None) if utilisateur else None,
-                    proprietaire_telephone=getattr(utilisateur, "numero_telephone", None) if utilisateur else None,
-                )
-            )
-
-        # Mettre à jour les places vendues (réservation temporaire)
-        voyage.places_vendues_passagers += reservation_data.nombre_passagers
-        if reservation_data.vehicule_inclus:
-            voyage.places_vendues_vehicules += 1
-
-        await db.commit()
-
-        refreshed = await db.execute(
-            select(Reservation)
-            .where(Reservation.id == reservation.id)
-            .options(
-                selectinload(Reservation.passagers_details),
-                selectinload(Reservation.vehicules_details),
-            )
-        )
-        reservation = refreshed.scalar_one()
-
-        # Invalider les caches (recherche + disponibilité)
-        await redis_client.delete_pattern("traversees:*")
-        await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
-
-        # Broadcast la mise à jour de disponibilité
-        await websocket_manager.publish_update(
-            voyage.id,
-            voyage.get_disponibilite()
-        )
-
-        return reservation
-
     async def get_user_reservations(
         self,
         db: AsyncSession,
@@ -257,52 +128,67 @@ class ReservationService:
         raison: Optional[str],
         background_tasks: BackgroundTasks
     ) -> dict:
-        """Annule une réservation"""
+        """Annule une réservation SANS remboursement (agent, fraude, no-show)."""
         reservation = await self.get_reservation(db, reservation_id, user_id)
 
-        # Vérifier que la réservation peut être annulée
         if reservation.statut_reservation in [StatutReservation.annule, StatutReservation.termine]:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Cannot cancel this reservation"
             )
 
-        # Récupérer le voyage
         result = await db.execute(
             select(ProgrammeVoyage).where(ProgrammeVoyage.id == reservation.voyage_id)
         )
         voyage = result.scalar_one()
 
-        # Calculer les frais d'annulation
-        frais_annulation = self._calculate_cancellation_fees(reservation, voyage)
-        montant_rembourse = reservation.montant_total - frais_annulation
-
-        # Mettre à jour la réservation
         reservation.statut_reservation = StatutReservation.annule
-        reservation.date_annulation = datetime.utcnow()
+        now = datetime.utcnow()
+        reservation.date_annulation = now
         reservation.raison_annulation = raison
-        reservation.frais_annulation = frais_annulation
+        reservation.frais_annulation = reservation.montant_total
 
-        # Libérer les places
-        voyage.places_vendues_passagers -= reservation.nombre_passagers
-        if reservation.vehicule_inclus:
-            voyage.places_vendues_vehicules -= 1
+        # Marquer chaque élément comme annulé
+        if reservation.passagers_details:
+            for p in reservation.passagers_details:
+                p.rembourse = True
+                p.frais_annulation = p.montant or 0
+                p.date_annulation = now
+                p.raison_annulation = raison
+        if reservation.vehicules_details:
+            for v in reservation.vehicules_details:
+                v.rembourse = True
+                v.frais_annulation = v.montant or 0
+                v.date_annulation = now
+                v.raison_annulation = raison
+        if reservation.colis_details:
+            for c in reservation.colis_details:
+                c.rembourse = True
+                c.frais_annulation = c.montant_total or 0
+                c.date_annulation = now
+                c.raison_annulation = raison
+
+        nb_passagers = len(reservation.passagers_details) if reservation.passagers_details else 0
+        nb_vehicules = len(reservation.vehicules_details) if reservation.vehicules_details else 0
+        voyage.places_vendues_passagers -= nb_passagers
+        if nb_vehicules > 0:
+            voyage.places_vendues_vehicules -= nb_vehicules
+
+        if reservation.passagers_details:
+            lit_ids = [p.lit_id for p in reservation.passagers_details if p.lit_id]
+            if lit_ids:
+                lits_result = await db.execute(
+                    select(Lit).where(Lit.id.in_(lit_ids)).with_for_update()
+                )
+                for lit in lits_result.scalars().all():
+                    lit.disponible = True
 
         await db.commit()
 
-        # Invalider les caches
-        await redis_client.delete_pattern("traversees:*")
         await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
+        await websocket_manager.publish_update(voyage.id, voyage.get_disponibilite())
 
-        # Broadcast la mise à jour
-        await websocket_manager.publish_update(
-            voyage.id,
-            voyage.get_disponibilite()
-        )
-
-        # Envoyer l'email d'annulation en arrière-plan
         from app.services.email import email_service
-
         result_user = await db.execute(
             select(Utilisateur).where(Utilisateur.id == user_id)
         )
@@ -313,60 +199,17 @@ class ReservationService:
             user.email,
             {
                 "reference": reservation.reference_reservation,
-                "frais_annulation": frais_annulation,
-                "montant_rembourse": montant_rembourse,
+                "frais_annulation": reservation.montant_total,
+                "montant_rembourse": 0,
                 "montant_total": reservation.montant_total
             }
         )
 
         return {
-            "message": "Reservation cancelled successfully",
-            "frais_annulation": frais_annulation,
-            "montant_rembourse": montant_rembourse
+            "message": "Reservation cancelled without refund",
+            "frais_annulation": reservation.montant_total,
+            "montant_rembourse": 0
         }
-
-    def _calculate_total_amount(
-        self,
-        voyage: ProgrammeVoyage,
-        reservation_data: ReservationCreate
-    ) -> float:
-        """Calcule le montant total de la réservation"""
-        prix_base = voyage.prix_promotionnel if voyage.prix_promotionnel else voyage.prix_base
-        montant = prix_base * reservation_data.nombre_passagers
-
-        # Ajouter le coût du véhicule si applicable
-        if reservation_data.vehicule_inclus:
-            # Prix du véhicule = 50% du prix de base par défaut
-            montant += prix_base * 0.5
-
-        return round(montant, 2)
-
-    def _calculate_cancellation_fees(
-        self,
-        reservation: Reservation,
-        voyage: ProgrammeVoyage
-    ) -> float:
-        """Calcule les frais d'annulation selon le délai avant le départ"""
-        now = datetime.utcnow()
-        time_until_departure = voyage.date_depart_programme - now
-
-        # Frais selon le délai
-        if time_until_departure.total_seconds() < 0:
-            # Après le départ: pas de remboursement
-            return reservation.montant_total
-        elif time_until_departure.days < 1:
-            # Moins de 24h: 80% de frais
-            return reservation.montant_total * 0.8
-        elif time_until_departure.days < 3:
-            # Moins de 3 jours: 50% de frais
-            return reservation.montant_total * 0.5
-        elif time_until_departure.days < 7:
-            # Moins de 7 jours: 25% de frais
-            return reservation.montant_total * 0.25
-        else:
-            # Plus de 7 jours: pas de frais
-            return 0.0
-
 
     async def get_voyage_boat_structure(
         self,
@@ -515,18 +358,22 @@ class ReservationService:
             "chambres": chambres_data
         }
 
-    async def create_reservation_multiple(
+    async def create_reservation_unified(
         self,
         db: AsyncSession,
         user_id: int,
-        reservation_data: ReservationCreateMultiple
+        reservation_data: ReservationCreateUnified
     ) -> Reservation:
-        """Crée une réservation pour plusieurs passagers ou véhicules"""
-        # Récupérer le voyage avec verrou
+        """Crée une réservation unifiée (passager/vehicule/colis) avec validation complète."""
+
+        # 1. Récupérer le voyage avec verrou FOR UPDATE
         query = (
             select(ProgrammeVoyage)
             .where(ProgrammeVoyage.id == reservation_data.voyage_id)
-            .options(selectinload(ProgrammeVoyage.bateau))
+            .options(
+                selectinload(ProgrammeVoyage.bateau),
+                selectinload(ProgrammeVoyage.route)
+            )
             .with_for_update()
         )
 
@@ -546,62 +393,68 @@ class ReservationService:
                 detail=f"Voyage is {voyage.statut.value}, cannot make reservation"
             )
 
-        # Déterminer le nombre de passagers et véhicules
-        if reservation_data.type_reservation == 'passager':
-            nombre_passagers = len(reservation_data.passagers) if reservation_data.passagers else 0
-            nombre_vehicules = 0
-        else:  # vehicule
-            nombre_passagers = 0
-            nombre_vehicules = len(reservation_data.vehicules) if reservation_data.vehicules else 0
+        # 2. Validation de la disponibilité
+        nombre_passagers = len(reservation_data.passagers) if reservation_data.passagers else 0
+        nombre_vehicules = len(reservation_data.vehicules) if reservation_data.vehicules else 0
+        nombre_colis = len(reservation_data.colis) if reservation_data.colis else 0
 
-        # Vérifier les places disponibles
-        places_dispo_passagers = voyage.places_disponibles_passagers - voyage.places_vendues_passagers
-        places_dispo_vehicules = voyage.places_disponibles_vehicules - voyage.places_vendues_vehicules
-
-        if nombre_passagers > 0 and places_dispo_passagers < nombre_passagers:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=(
-                    "Plus assez de places passagers disponibles : "
-                    f"{max(places_dispo_passagers, 0)} restante(s) sur ce voyage, "
-                    f"{nombre_passagers} demandée(s)."
-                ),
-            )
-
-        if nombre_vehicules > 0:
-            capacite_vehicules = getattr(voyage.bateau, "capacite_vehicules", None) if voyage.bateau else None
-            if not capacite_vehicules or capacite_vehicules <= 0:
+        # Vérifier places passagers
+        if nombre_passagers > 0:
+            places_dispo_passagers = voyage.places_disponibles_passagers - voyage.places_vendues_passagers
+            if places_dispo_passagers < nombre_passagers:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Ce bateau ne supporte pas l'embarquement de véhicules.",
+                    detail=(
+                        f"Plus assez de places passagers disponibles: "
+                        f"{max(places_dispo_passagers, 0)} restante(s), "
+                        f"{nombre_passagers} demandée(s)."
+                    ),
                 )
+
+        # Vérifier places véhicules
+        if nombre_vehicules > 0:
+            # Vérifier que le bateau accepte ces types de véhicules
+            if not voyage.bateau:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Aucun bateau assigné à ce voyage.",
+                )
+
+            # Vérifier chaque type de véhicule
+            if reservation_data.vehicules:
+                for vehicule in reservation_data.vehicules:
+                    capacite_vehicule = next(
+                        (cap for cap in voyage.bateau.capacites_vehicules
+                         if cap.type_vehicule_id == vehicule.type_vehicule_id),
+                        None
+                    )
+
+                    if not capacite_vehicule or capacite_vehicule.capacite <= 0:
+                        raise HTTPException(
+                            status_code=status.HTTP_400_BAD_REQUEST,
+                            detail=f"Ce bateau n'accepte pas le type de véhicule spécifié (ID: {vehicule.type_vehicule_id}).",
+                        )
+
+            places_dispo_vehicules = voyage.places_disponibles_vehicules - voyage.places_vendues_vehicules
             if places_dispo_vehicules < nombre_vehicules:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=(
-                        "Plus assez de places véhicules sur ce voyage : "
-                        f"{max(places_dispo_vehicules, 0)} place(s) restante(s), "
-                        f"{nombre_vehicules} demandée(s). "
-                        "D'autres passagers ont déjà réservé des places véhicules."
+                        f"Plus assez de places véhicules disponibles: "
+                        f"{max(places_dispo_vehicules, 0)} restante(s), "
+                        f"{nombre_vehicules} demandée(s)."
                     ),
                 )
 
-        # Vérifier les conflits de lits (pour passagers) + verrouillage atomique
+        # 3. Vérifier les lits disponibles (anti-double-booking)
         if reservation_data.passagers:
             lits_utilises = [p.lit_id for p in reservation_data.passagers if p.lit_id]
-            if len(lits_utilises) != len(set(lits_utilises)):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Duplicate bed assignments detected"
-                )
-
             if lits_utilises:
-                # FOR UPDATE sur les lits demandés (anti-double-booking)
+                # Verrouiller les lits
                 locked_lits_q = (
                     select(Lit).where(Lit.id.in_(lits_utilises)).with_for_update()
                 )
                 locked_lits = (await db.execute(locked_lits_q)).scalars().all()
-                lits_by_id = {l.id: l for l in locked_lits}
 
                 if len(locked_lits) != len(set(lits_utilises)):
                     raise HTTPException(
@@ -616,13 +469,17 @@ class ReservationService:
                             detail=f"Bed {lit.numero_lit} is not available",
                         )
 
-                # Vérifier qu'aucune autre réservation active n'occupe déjà ces lits
-                conflict_q = select(Reservation).where(
-                    Reservation.voyage_id == reservation_data.voyage_id,
-                    Reservation.lit_id.in_(lits_utilises),
-                    Reservation.statut_reservation.in_(
-                        [StatutReservation.en_attente, StatutReservation.confirme]
-                    ),
+                # Vérifier qu'aucune autre réservation active n'occupe ces lits
+                conflict_q = (
+                    select(ReservationPassager)
+                    .join(Reservation, ReservationPassager.reservation_id == Reservation.id)
+                    .where(
+                        Reservation.voyage_id == reservation_data.voyage_id,
+                        ReservationPassager.lit_id.in_(lits_utilises),
+                        Reservation.statut_reservation.in_(
+                            [StatutReservation.en_attente, StatutReservation.confirme]
+                        ),
+                    )
                 )
                 conflict = (await db.execute(conflict_q)).scalars().first()
                 if conflict:
@@ -631,128 +488,112 @@ class ReservationService:
                         detail="One or more beds are already reserved",
                     )
 
-        # Vérifier les immatriculations uniques (pour véhicules)
-        if reservation_data.vehicules:
-            immatriculations = [v.immatriculation.strip().upper() for v in reservation_data.vehicules]
-            if len(immatriculations) != len(set(immatriculations)):
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Duplicate vehicle registrations detected"
-                )
+                # Marquer les lits comme indisponibles
+                for lit in locked_lits:
+                    lit.disponible = False
 
-        # Calculer le montant total
-        prix_base = voyage.prix_promotionnel if voyage.prix_promotionnel else voyage.prix_base
-        montant_total = 0
+        # 4. Calculer le montant total
+        montant_total = await self._calculate_total_amount_unified(db, voyage, reservation_data)
 
-        # Coût des passagers
-        if reservation_data.passagers:
-            montant_total += prix_base * len(reservation_data.passagers)
-
-            # Ajouter les coûts des chambres et lits
-            for passager in reservation_data.passagers:
-                if passager.chambre_id:
-                    chambre_query = select(Chambre).where(Chambre.id == passager.chambre_id)
-                    chambre_result = await db.execute(chambre_query)
-                    chambre = chambre_result.scalar_one_or_none()
-                    if chambre:
-                        montant_total += chambre.prix_base
-
-                if passager.lit_id:
-                    lit_query = select(Lit).where(Lit.id == passager.lit_id)
-                    lit_result = await db.execute(lit_query)
-                    lit = lit_result.scalar_one_or_none()
-                    if lit:
-                        montant_total += lit.prix_supplementaire
-
-        # Coût des véhicules (50% du prix de base par véhicule)
-        if reservation_data.vehicules:
-            montant_total += (prix_base * 0.5) * len(reservation_data.vehicules)
-
-        # Créer la réservation principale
+        # 5. Créer la réservation principale
         reference = f"RES-{uuid.uuid4().hex[:12].upper()}"
         expiration = datetime.utcnow() + timedelta(minutes=settings.RESERVATION_EXPIRATION_MINUTES)
 
-        premier_passager = reservation_data.passagers[0] if reservation_data.passagers else None
-        premier_vehicule = reservation_data.vehicules[0] if reservation_data.vehicules else None
-
-        # Récupérer l'utilisateur pour identifier le passager principal
-        user_result = await db.execute(select(Utilisateur).where(Utilisateur.id == user_id))
-        utilisateur = user_result.scalar_one_or_none()
-
-        try:
-            mode_enum = ReservationMode(reservation_data.reservation_mode)
-        except ValueError:
-            mode_enum = (
-                ReservationMode.vehicule
-                if reservation_data.type_reservation == "vehicule"
-                else ReservationMode.moi_meme
-            )
+        # Récupérer les pricings pour les montants unitaires
+        traversee = voyage.route
+        pricing_passagers = await self._get_pricing_passagers(db, traversee.id)
+        pricing_vehicules = await self._get_pricing_vehicules(db, traversee.id)
 
         reservation = Reservation(
             reference_reservation=reference,
             utilisateur_id=user_id,
             voyage_id=reservation_data.voyage_id,
             type_reservation=reservation_data.type_reservation,
-            reservation_mode=mode_enum,
-            niveau_id=None,
-            chambre_id=premier_passager.chambre_id if premier_passager else None,
-            lit_id=premier_passager.lit_id if premier_passager else None,
-            montant_total=round(montant_total, 2),
+            montant_total=montant_total,
             date_expiration_paiement=expiration,
-            nombre_passagers=nombre_passagers,
-            vehicule_inclus=nombre_vehicules > 0,
-            type_vehicule=premier_vehicule.type_vehicule if premier_vehicule else None,
-            immatriculation_vehicule=premier_vehicule.immatriculation if premier_vehicule else None,
-            statut_reservation=StatutReservation.en_attente
+            statut_reservation=StatutReservation.en_attente,
+            is_front=False,
+            expediteur_nom=reservation_data.expediteur_nom,
+            expediteur_telephone=reservation_data.expediteur_telephone,
+            destinataire_nom=reservation_data.destinataire_nom,
+            destinataire_telephone=reservation_data.destinataire_telephone,
         )
 
         db.add(reservation)
         await db.flush()
 
-        # Traçabilité: enregistrer chaque passager
+        # 6. Créer les entrées ReservationPassager (traçabilité + montant)
         if reservation_data.passagers:
-            email_principal = (utilisateur.email if utilisateur else None) or ""
-            for index, passager in enumerate(reservation_data.passagers):
-                is_principal = False
-                if mode_enum == ReservationMode.moi_et_autres and index == 0:
-                    is_principal = True
-                elif (
-                    email_principal
-                    and passager.email
-                    and passager.email.strip().lower() == email_principal.strip().lower()
-                ):
-                    is_principal = True
+            for passager_info in reservation_data.passagers:
+                classe = passager_info.classe_passager
+                montant_passager = 0.0
+                if classe == ClassePassager.standard:
+                    montant_passager += pricing_passagers.get("standard", 0.0)
+                elif classe == ClassePassager.premium:
+                    montant_passager += pricing_passagers.get("premium", 0.0)
+                elif classe == ClassePassager.vip:
+                    montant_passager += pricing_passagers.get("vip", 0.0)
+                if passager_info.chambre_id:
+                    chambre = (await db.execute(
+                        select(Chambre).where(Chambre.id == passager_info.chambre_id)
+                    )).scalar_one_or_none()
+                    if chambre:
+                        montant_passager += chambre.prix_base
+                if passager_info.lit_id:
+                    lit = (await db.execute(
+                        select(Lit).where(Lit.id == passager_info.lit_id)
+                    )).scalar_one_or_none()
+                    if lit:
+                        montant_passager += lit.prix_supplementaire
 
                 db.add(
                     ReservationPassager(
                         reservation_id=reservation.id,
-                        nom_complet=passager.nom_complet,
-                        email=passager.email,
-                        telephone=passager.telephone,
-                        chambre_id=passager.chambre_id,
-                        lit_id=passager.lit_id,
-                        is_principal=is_principal,
+                        nom_complet=passager_info.nom_complet,
+                        email=passager_info.email,
+                        telephone=passager_info.telephone,
+                        date_naissance=passager_info.date_naissance,
+                        numero_identite=passager_info.numero_identite,
+                        classe_passager=passager_info.classe_passager,
+                        niveau_id=passager_info.niveau_id,
+                        chambre_id=passager_info.chambre_id,
+                        lit_id=passager_info.lit_id,
+                        chaise_id=passager_info.chaise_id,
+                        is_principal=passager_info.is_principal,
+                        montant=round(montant_passager, 2),
                     )
                 )
 
-        # Traçabilité: enregistrer chaque véhicule
+        # 7. Créer les entrées ReservationVehicule (traçabilité + montant)
         if reservation_data.vehicules:
-            for vehicule in reservation_data.vehicules:
+            for vehicule_info in reservation_data.vehicules:
                 db.add(
                     ReservationVehicule(
                         reservation_id=reservation.id,
-                        type_vehicule=vehicule.type_vehicule,
-                        immatriculation=vehicule.immatriculation.strip().upper(),
-                        marque=vehicule.marque,
-                        modele=vehicule.modele,
-                        couleur=vehicule.couleur,
-                        annee=vehicule.annee,
-                        proprietaire_nom=vehicule.proprietaire_nom,
-                        proprietaire_telephone=vehicule.proprietaire_telephone,
+                        type_vehicule_id=vehicule_info.type_vehicule_id,
+                        immatriculation=vehicule_info.immatriculation.strip().upper(),
+                        marque=vehicule_info.marque,
+                        modele=vehicule_info.modele,
+                        couleur=vehicule_info.couleur,
+                        annee=vehicule_info.annee,
+                        montant=round(pricing_vehicules.get(vehicule_info.type_vehicule_id, 0.0), 2),
                     )
                 )
 
-        # Mettre à jour les places vendues
+        # 8. Créer les entrées colis
+        if reservation_data.colis:
+            await self._create_colis_entries(db, voyage, reservation, reservation_data.colis)
+
+        # 9. Créer le ticket global unique
+        await self._create_global_ticket(
+            db,
+            reservation,
+            nombre_passagers,
+            nombre_vehicules,
+            nombre_colis
+        )
+
+        # 10. Mettre à jour les places vendues
         if nombre_passagers > 0:
             voyage.places_vendues_passagers += nombre_passagers
         if nombre_vehicules > 0:
@@ -760,22 +601,23 @@ class ReservationService:
 
         await db.commit()
 
-        # Recharger avec les relations pour la réponse
+        # 11. Recharger avec relations
         refreshed = await db.execute(
             select(Reservation)
             .where(Reservation.id == reservation.id)
             .options(
                 selectinload(Reservation.passagers_details),
                 selectinload(Reservation.vehicules_details),
+                selectinload(Reservation.colis_details),
+                selectinload(Reservation.ticket),
             )
         )
         reservation = refreshed.scalar_one()
 
-        # Invalider le cache des traversées et de la disponibilité
-        await redis_client.delete_pattern("traversees:*")
+        # 12. Invalider le cache disponibilité du voyage
         await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
 
-        # Broadcast la mise à jour
+        # 13. Broadcast WebSocket
         await websocket_manager.publish_update(
             voyage.id,
             voyage.get_disponibilite()
@@ -783,108 +625,365 @@ class ReservationService:
 
         return reservation
 
-    async def cancel_passager(
+    async def create_front_office_reservation(
         self,
         db: AsyncSession,
-        reservation_id: int,
-        passager_id: int,
         user_id: int,
-        raison: Optional[str] = None,
-    ) -> dict:
-        """Annule un passager spécifique d'une réservation de groupe.
+        data: ReservationFrontCreate
+    ) -> Reservation:
+        """Crée une réservation passager depuis le front office (chambre/lit/chaise possibles)."""
 
-        - Libère la place voyageur correspondante sur le voyage
-        - Recalcule le `montant_total` au prorata (prix de base + extras du passager)
-        - Si c'était le dernier passager et qu'il n'y a pas de véhicule, annule la
-          réservation globale.
-        """
-        reservation = await self.get_reservation(db, reservation_id, user_id)
-
-        if reservation.statut_reservation in (StatutReservation.annule, StatutReservation.termine):
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Reservation cannot be modified",
-            )
-
-        result = await db.execute(
-            select(Passager).where(
-                Passager.id == passager_id,
-                Passager.reservation_id == reservation_id,
-            )
-        )
-        passager = result.scalar_one_or_none()
-        if not passager:
-            raise HTTPException(status_code=404, detail="Passenger not found")
-        if passager.statut == StatutPassager.annule:
-            raise HTTPException(status_code=400, detail="Passenger already cancelled")
-        if passager.embarque:
-            raise HTTPException(status_code=400, detail="Passenger already boarded")
-
-        # Charger voyage avec verrou
-        voyage_q = (
+        query = (
             select(ProgrammeVoyage)
-            .where(ProgrammeVoyage.id == reservation.voyage_id)
+            .where(ProgrammeVoyage.id == data.voyage_id)
+            .options(
+                selectinload(ProgrammeVoyage.bateau),
+                selectinload(ProgrammeVoyage.route)
+            )
             .with_for_update()
         )
-        voyage = (await db.execute(voyage_q)).scalar_one()
+        result = await db.execute(query)
+        voyage = result.scalar_one_or_none()
 
-        passager.statut = StatutPassager.annule
-        passager.date_annulation = datetime.utcnow()
-        passager.raison_annulation = raison
-
-        # Recalculer le montant: déduire la part du passager (prix base + chambre + lit)
-        prix_base = voyage.prix_promotionnel if voyage.prix_promotionnel else voyage.prix_base
-        deduction = float(prix_base)
-        if passager.chambre_id:
-            chambre = (
-                await db.execute(select(Chambre).where(Chambre.id == passager.chambre_id))
-            ).scalar_one_or_none()
-            if chambre:
-                deduction += float(chambre.prix_base)
-        if passager.lit_id:
-            lit = (
-                await db.execute(select(Lit).where(Lit.id == passager.lit_id))
-            ).scalar_one_or_none()
-            if lit:
-                deduction += float(lit.prix_supplementaire)
-
-        reservation.montant_total = max(0.0, round(float(reservation.montant_total) - deduction, 2))
-        reservation.nombre_passagers = max(0, reservation.nombre_passagers - 1)
-        voyage.places_vendues_passagers = max(0, voyage.places_vendues_passagers - 1)
-
-        # Si plus aucun passager actif et pas de véhicule actif, annuler la réservation
-        actifs = await db.execute(
-            select(Passager).where(
-                Passager.reservation_id == reservation_id,
-                Passager.statut != StatutPassager.annule,
+        if not voyage:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, detail="Voyage not found")
+        if voyage.statut not in [StatutVoyage.programme, StatutVoyage.confirme]:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=f"Voyage is {voyage.statut.value}, cannot make reservation"
             )
-        )
-        nb_actifs = len(actifs.scalars().all())
-        vehic_actifs = await db.execute(
-            select(VehiculeReservation).where(
-                VehiculeReservation.reservation_id == reservation_id,
-                VehiculeReservation.annule.is_(False),
+
+        nombre_passagers = len(data.passagers)
+        places_dispo = voyage.places_disponibles_passagers - voyage.places_vendues_passagers
+        if places_dispo < nombre_passagers:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                detail=f"Plus assez de places passagers disponibles: {max(places_dispo, 0)} restante(s), {nombre_passagers} demandée(s)."
             )
+
+        # Vérifier lits disponibles (anti-double-booking)
+        lits_utilises = [p.lit_id for p in data.passagers if p.lit_id]
+        if lits_utilises:
+            locked_lits_q = (
+                select(Lit).where(Lit.id.in_(lits_utilises)).with_for_update()
+            )
+            locked_lits = (await db.execute(locked_lits_q)).scalars().all()
+            if len(locked_lits) != len(set(lits_utilises)):
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="Un ou plusieurs lits demandés n'existent pas")
+            for lit in locked_lits:
+                if not lit.disponible:
+                    raise HTTPException(status.HTTP_409_CONFLICT, detail=f"Lit {lit.numero_lit} non disponible")
+            conflict_q = (
+                select(ReservationPassager)
+                .join(Reservation, ReservationPassager.reservation_id == Reservation.id)
+                .where(
+                    Reservation.voyage_id == data.voyage_id,
+                    ReservationPassager.lit_id.in_(lits_utilises),
+                    Reservation.statut_reservation.in_(
+                        [StatutReservation.en_attente, StatutReservation.confirme]
+                    ),
+                )
+            )
+            conflict = (await db.execute(conflict_q)).scalars().first()
+            if conflict:
+                raise HTTPException(status.HTTP_409_CONFLICT, detail="Un ou plusieurs lits sont déjà réservés")
+
+            for lit in locked_lits:
+                lit.disponible = False
+
+        total = await self._calculate_total_front_office(db, voyage, data.passagers)
+
+        reference = f"FRONT-{uuid.uuid4().hex[:12].upper()}"
+        expiration = datetime.utcnow() + timedelta(minutes=settings.RESERVATION_EXPIRATION_MINUTES)
+
+        reservation = Reservation(
+            reference_reservation=reference,
+            utilisateur_id=user_id,
+            voyage_id=data.voyage_id,
+            type_reservation=TypeReservation.passager,
+            montant_total=total,
+            date_expiration_paiement=expiration,
+            statut_reservation=StatutReservation.en_attente,
+            is_front=True,
         )
-        nb_vehic = len(vehic_actifs.scalars().all())
-        if nb_actifs == 0 and nb_vehic == 0:
-            reservation.statut_reservation = StatutReservation.annule
-            reservation.date_annulation = datetime.utcnow()
-            reservation.raison_annulation = raison or "All passengers cancelled"
+        db.add(reservation)
+        await db.flush()
+
+        # Récupérer pricings pour montants unitaires
+        pricing_passagers = await self._get_pricing_passagers(db, voyage.route.id)
+        chambre_ids_pr = [p.chambre_id for p in data.passagers if p.chambre_id]
+        lit_ids_pr = [p.lit_id for p in data.passagers if p.lit_id]
+        chambres_map_pr = {}
+        if chambre_ids_pr:
+            chambres_pr = await db.execute(
+                select(Chambre).where(Chambre.id.in_(set(chambre_ids_pr)))
+            )
+            chambres_map_pr = {c.id: c for c in chambres_pr.scalars().all()}
+        lits_map_pr = {}
+        if lit_ids_pr:
+            lits_pr = await db.execute(
+                select(Lit).where(Lit.id.in_(set(lit_ids_pr)))
+            )
+            lits_map_pr = {l.id: l for l in lits_pr.scalars().all()}
+
+        for p in data.passagers:
+            montant_passager = 0.0
+            if p.classe_passager == ClassePassager.standard:
+                montant_passager += pricing_passagers.get("standard", 0.0)
+            elif p.classe_passager == ClassePassager.premium:
+                montant_passager += pricing_passagers.get("premium", 0.0)
+            elif p.classe_passager == ClassePassager.vip:
+                montant_passager += pricing_passagers.get("vip", 0.0)
+            if p.chambre_id and p.chambre_id in chambres_map_pr:
+                montant_passager += chambres_map_pr[p.chambre_id].prix_base
+            if p.lit_id and p.lit_id in lits_map_pr:
+                montant_passager += lits_map_pr[p.lit_id].prix_supplementaire
+
+            db.add(ReservationPassager(
+                reservation_id=reservation.id,
+                nom_complet=p.nom_complet,
+                email=p.email,
+                telephone=p.telephone,
+                date_naissance=p.date_naissance,
+                numero_identite=p.numero_identite,
+                classe_passager=p.classe_passager,
+                niveau_id=p.niveau_id,
+                chambre_id=p.chambre_id,
+                lit_id=p.lit_id,
+                chaise_id=p.chaise_id,
+                is_principal=p.is_principal,
+                montant=round(montant_passager, 2),
+            ))
+
+        await self._create_global_ticket(db, reservation, nombre_passagers, 0, 0)
+        voyage.places_vendues_passagers += nombre_passagers
 
         await db.commit()
 
-        await redis_client.delete_pattern("traversees:*")
+        refreshed = await db.execute(
+            select(Reservation)
+            .where(Reservation.id == reservation.id)
+            .options(
+                selectinload(Reservation.passagers_details),
+                selectinload(Reservation.ticket),
+            )
+        )
+        reservation = refreshed.scalar_one()
         await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
         await websocket_manager.publish_update(voyage.id, voyage.get_disponibilite())
+        return reservation
+
+    async def _calculate_total_front_office(
+        self,
+        db: AsyncSession,
+        voyage: ProgrammeVoyage,
+        passagers: List[PassagerFrontInfo]
+    ) -> float:
+        if not voyage.route:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="No pricing configuration found for this voyage")
+        pricing = await self._get_pricing_passagers(db, voyage.route.id)
+
+        chambre_ids = [p.chambre_id for p in passagers if p.chambre_id]
+        lit_ids = [p.lit_id for p in passagers if p.lit_id]
+
+        chambres_map = {}
+        if chambre_ids:
+            chambres_result = await db.execute(
+                select(Chambre).where(Chambre.id.in_(set(chambre_ids)))
+            )
+            chambres_map = {c.id: c for c in chambres_result.scalars().all()}
+
+        lits_map = {}
+        if lit_ids:
+            lits_result = await db.execute(
+                select(Lit).where(Lit.id.in_(set(lit_ids)))
+            )
+            lits_map = {l.id: l for l in lits_result.scalars().all()}
+
+        total = 0.0
+        for p in passagers:
+            if p.classe_passager == ClassePassager.standard:
+                total += pricing.get("standard", 0.0)
+            elif p.classe_passager == ClassePassager.premium:
+                total += pricing.get("premium", 0.0)
+            elif p.classe_passager == ClassePassager.vip:
+                total += pricing.get("vip", 0.0)
+            if p.chambre_id and p.chambre_id in chambres_map:
+                total += chambres_map[p.chambre_id].prix_base
+            if p.lit_id and p.lit_id in lits_map:
+                total += lits_map[p.lit_id].prix_supplementaire
+        return round(total, 2)
+
+    async def _calculate_total_amount_unified(
+        self,
+        db: AsyncSession,
+        voyage: ProgrammeVoyage,
+        reservation_data: ReservationCreateUnified
+    ) -> float:
+        """Calcule le montant total avec pricing dynamique depuis Traversee."""
+        if not voyage.route:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No pricing configuration found for this voyage"
+            )
+
+        traversee = voyage.route
+        montant = 0.0
+
+        # Récupérer les pricings depuis la traversée
+        pricing_passagers = await self._get_pricing_passagers(db, traversee.id)
+        pricing_vehicules = await self._get_pricing_vehicules(db, traversee.id)
+        pricing_colis = await self._get_pricing_colis(db, traversee.id)
+
+        # 1. Coût des passagers par classe
+        if reservation_data.passagers:
+            for passager in reservation_data.passagers:
+                classe = passager.classe_passager
+                if classe == ClassePassager.standard:
+                    montant += pricing_passagers.get("standard", 0.0)
+                elif classe == ClassePassager.premium:
+                    montant += pricing_passagers.get("premium", 0.0)
+                elif classe == ClassePassager.vip:
+                    montant += pricing_passagers.get("vip", 0.0)
+
+                # Ajouter coûts chambre et lit
+                if passager.chambre_id:
+                    chambre = (await db.execute(
+                        select(Chambre).where(Chambre.id == passager.chambre_id)
+                    )).scalar_one_or_none()
+                    if chambre:
+                        montant += chambre.prix_base
+
+                if passager.lit_id:
+                    lit = (await db.execute(
+                        select(Lit).where(Lit.id == passager.lit_id)
+                    )).scalar_one_or_none()
+                    if lit:
+                        montant += lit.prix_supplementaire
+
+        # 2. Coût des véhicules par type
+        if reservation_data.vehicules:
+            for vehicule in reservation_data.vehicules:
+                prix = pricing_vehicules.get(vehicule.type_vehicule_id, 0.0)
+                montant += prix
+
+        # 3. Coût des colis (prix par kg)
+        if reservation_data.colis:
+            prix_par_kg = pricing_colis.get("prix_par_kg", 0.0)
+            for colis in reservation_data.colis:
+                montant += colis.poids_kg * prix_par_kg
+
+        return round(montant, 2)
+
+    async def _get_pricing_passagers(self, db: AsyncSession, traversee_id: int) -> Dict[str, float]:
+        """Récupère le pricing des passagers pour une traversée."""
+        result = await db.execute(
+            select(PricingPassager).where(
+                PricingPassager.traversee_id == traversee_id,
+                PricingPassager.actif == True
+            )
+        )
+        pricing = result.scalar_one_or_none()
+
+        if not pricing:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="No passenger pricing configured for this route"
+            )
 
         return {
-            "message": "Passenger cancelled successfully",
-            "passager_id": passager.id,
-            "deduction": deduction,
-            "montant_total": reservation.montant_total,
-            "reservation_annulee": reservation.statut_reservation == StatutReservation.annule,
+            "standard": float(pricing.prix_standard),
+            "premium": float(pricing.prix_premium),
+            "vip": float(pricing.prix_vip),
         }
+
+    async def _get_pricing_vehicules(self, db: AsyncSession, traversee_id: int) -> Dict[int, float]:
+        """Récupère le pricing des véhicules pour une traversée (dict: type_vehicule_id -> prix)."""
+        result = await db.execute(
+            select(PricingVehicule).where(
+                PricingVehicule.traversee_id == traversee_id,
+                PricingVehicule.actif == True
+            )
+        )
+        pricings = result.scalars().all()
+
+        return {p.type_vehicule_id: float(p.prix) for p in pricings}
+
+    async def _get_pricing_colis(self, db: AsyncSession, traversee_id: int) -> Dict[str, float]:
+        """Récupère le pricing des colis pour une traversée."""
+        result = await db.execute(
+            select(PricingColis).where(
+                PricingColis.traversee_id == traversee_id,
+                PricingColis.actif == True
+            )
+        )
+        pricing = result.scalar_one_or_none()
+
+        if not pricing:
+            # Valeur par défaut si pas de pricing colis configuré
+            return {"prix_par_kg": 0.0}
+
+        return {"prix_par_kg": float(pricing.prix_par_kg)}
+
+    async def _create_global_ticket(
+        self,
+        db: AsyncSession,
+        reservation: Reservation,
+        nombre_passagers: int,
+        nombre_vehicules: int,
+        nombre_colis: int
+    ):
+        """Crée un ticket global unique pour la réservation avec compteurs."""
+        # Générer le ticket global signé
+        numero_ticket, payload, signature, qr_string = build_global_ticket(
+            reservation_id=reservation.id,
+            reference=reservation.reference_reservation
+        )
+
+        # Créer l'entrée Ticket avec compteurs
+        ticket = Ticket(
+            reservation_id=reservation.id,
+            numero_ticket=numero_ticket,
+            qr_payload=json.dumps(payload),
+            qr_signature=signature,
+            nombre_passagers=nombre_passagers,
+            nombre_vehicules=nombre_vehicules,
+            nombre_colis=nombre_colis,
+        )
+        db.add(ticket)
+
+        # Générer le QR code (fichier image)
+        await qrcode_service.generate_ticket_qr_code(
+            numero_ticket=numero_ticket,
+            reservation_id=reservation.id,
+            signed_payload=qr_string
+        )
+
+    async def _create_colis_entries(
+        self,
+        db: AsyncSession,
+        voyage: ProgrammeVoyage,
+        reservation: Reservation,
+        colis_info: List[ColisCreateInfo]
+    ):
+        """Crée les entrées ReservationColis avec calcul du prix."""
+        # Récupérer pricing colis
+        pricing_colis = await self._get_pricing_colis(db, voyage.route.id)
+        prix_par_kg = pricing_colis.get("prix_par_kg", 0.0)
+
+        for colis in colis_info:
+            montant_colis = colis.poids_kg * prix_par_kg
+
+            db.add(
+                ReservationColis(
+                    reservation_id=reservation.id,
+                    description_marchandises=colis.description_marchandises,
+                    poids_kg=colis.poids_kg,
+                    montant_par_kg=prix_par_kg,
+                    montant_total=round(montant_colis, 2),
+                )
+            )
+
 
 
 reservation_service = ReservationService()

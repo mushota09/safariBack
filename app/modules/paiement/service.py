@@ -3,6 +3,7 @@ from typing import Optional
 from datetime import datetime
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from fastapi import HTTPException, status, BackgroundTasks
 
 from app.models.paiement import Paiement, StatutPaiement, ModePaiement
@@ -17,10 +18,7 @@ from app.services.pdf_generator import pdf_generator
 from app.services.email import email_service
 from app.services.ticket_signing import (
     build_global_ticket,
-    build_individual_ticket,
 )
-from app.models.passager import Passager, StatutPassager
-from app.models.vehicule import VehiculeReservation
 from app.redis_client import redis_client
 from app.websocket_manager import websocket_manager
 
@@ -119,8 +117,7 @@ class PaiementService:
             )
             voyage = result_voyage.scalar_one()
 
-            # Invalider les caches (recherche + disponibilité d'un voyage)
-            await redis_client.delete_pattern("traversees:*")
+            # Invalider le cache disponibilité du voyage
             await redis_client.delete(f"voyage:disponibilite:{voyage.id}")
 
             # Broadcast la mise à jour de disponibilité
@@ -130,14 +127,16 @@ class PaiementService:
                 event="availability",
             )
             # Broadcast d'un événement de réservation confirmée (pour le dashboard)
+            nb_passagers = len(reservation.passagers_details) if reservation.passagers_details else 0
+            nb_vehicules = len(reservation.vehicules_details) if reservation.vehicules_details else 0
             await websocket_manager.publish_update(
                 voyage.id,
                 {
                     "reservation_id": reservation.id,
                     "reference": reservation.reference_reservation,
                     "montant_total": reservation.montant_total,
-                    "nombre_passagers": reservation.nombre_passagers,
-                    "vehicule_inclus": reservation.vehicule_inclus,
+                    "nombre_passagers": nb_passagers,
+                    "vehicule_inclus": nb_vehicules > 0,
                 },
                 event="reservation",
             )
@@ -236,59 +235,34 @@ class PaiementService:
         background_tasks: BackgroundTasks,
         user_id: int
     ):
-        """Génère le ticket global signé et les tickets individuels passagers/véhicules."""
-        # Ticket global signé
-        numero, _payload, sig_hex, qr_string = build_global_ticket(
-            reservation.id,
-            reservation.reference_reservation,
+        """Génère le ticket global ou réutilise l'existant, puis lance la génération des fichiers."""
+        # Vérifier si un ticket existe déjà (create_unified en crée un)
+        existing = await db.execute(
+            select(Ticket).where(Ticket.reservation_id == reservation.id)
         )
+        ticket = existing.scalar_one_or_none()
 
-        ticket = Ticket(
-            reservation_id=reservation.id,
-            numero_ticket=numero,
-            qr_code=qr_string,
-            qr_payload=qr_string,
-            qr_signature=sig_hex,
-            pdf_genere=False,
-            embarque=False,
-        )
-
-        db.add(ticket)
-
-        # Tickets individuels par passager (s'il y en a)
-        result = await db.execute(
-            select(Passager).where(Passager.reservation_id == reservation.id)
-        )
-        passagers = result.scalars().all()
-        for idx, passager in enumerate(passagers):
-            p_num, _, p_sig, p_qr = build_individual_ticket(
+        if not ticket:
+            # Créer le ticket global signé
+            numero, _payload, sig_hex, qr_string = build_global_ticket(
                 reservation.id,
                 reservation.reference_reservation,
-                idx,
-                kind="passager",
             )
-            passager.numero_ticket = p_num
-            passager.qr_payload = p_qr
-            passager.qr_signature = p_sig
-            passager.statut = StatutPassager.confirme
 
-        # Tickets individuels par véhicule
-        result_v = await db.execute(
-            select(VehiculeReservation).where(VehiculeReservation.reservation_id == reservation.id)
-        )
-        for idx, vehic in enumerate(result_v.scalars().all()):
-            v_num, _, v_sig, v_qr = build_individual_ticket(
-                reservation.id,
-                reservation.reference_reservation,
-                idx,
-                kind="vehicule",
+            ticket = Ticket(
+                reservation_id=reservation.id,
+                numero_ticket=numero,
+                qr_payload=qr_string,
+                qr_signature=sig_hex,
+                nombre_passagers=len(reservation.passagers_details) if reservation.passagers_details else 0,
+                nombre_vehicules=len(reservation.vehicules_details) if reservation.vehicules_details else 0,
+                nombre_colis=len(reservation.colis_details) if reservation.colis_details else 0,
+                pdf_genere=False,
+                embarque=False,
             )
-            vehic.numero_ticket = v_num
-            vehic.qr_payload = v_qr
-            vehic.qr_signature = v_sig
-
-        await db.commit()
-        await db.refresh(ticket)
+            db.add(ticket)
+            await db.commit()
+            await db.refresh(ticket)
 
         # Générer l'image QR et le PDF en arrière-plan
         background_tasks.add_task(
@@ -307,16 +281,14 @@ class PaiementService:
         user_id: int
     ):
         """Génère les fichiers du ticket (QR code et PDF) et envoie l'email"""
-        # Récupérer les données nécessaires
+        # Récupérer les données nécessaires en une seule requête
         result = await db.execute(
-            select(Ticket).where(Ticket.id == ticket_id)
+            select(Ticket)
+            .where(Ticket.id == ticket_id)
+            .options(selectinload(Ticket.reservation))
         )
         ticket = result.scalar_one()
-
-        result = await db.execute(
-            select(Reservation).where(Reservation.id == reservation_id)
-        )
-        reservation = result.scalar_one()
+        reservation = ticket.reservation
 
         result = await db.execute(
             select(Utilisateur).where(Utilisateur.id == user_id)
@@ -324,7 +296,14 @@ class PaiementService:
         user = result.scalar_one()
 
         result = await db.execute(
-            select(ProgrammeVoyage).where(ProgrammeVoyage.id == reservation.voyage_id)
+            select(ProgrammeVoyage)
+            .where(ProgrammeVoyage.id == reservation.voyage_id)
+            .options(
+                selectinload(ProgrammeVoyage.port_depart),
+                selectinload(ProgrammeVoyage.port_arrivee),
+                selectinload(ProgrammeVoyage.bateau),
+                selectinload(ProgrammeVoyage.compagnie),
+            )
         )
         voyage = result.scalar_one()
 
@@ -336,6 +315,10 @@ class PaiementService:
         )
 
         # Préparer les données pour le PDF
+        nb_passagers = len(reservation.passagers_details) if reservation.passagers_details else 0
+        nb_vehicules = len(reservation.vehicules_details) if reservation.vehicules_details else 0
+        vehicule_info = reservation.vehicules_details[0] if reservation.vehicules_details else None
+
         ticket_data = {
             "numero_ticket": ticket.numero_ticket,
             "reference_reservation": reservation.reference_reservation,
@@ -347,10 +330,10 @@ class PaiementService:
             "date_arrivee": voyage.date_arrivee_programmee.strftime("%d/%m/%Y %H:%M"),
             "nom_bateau": voyage.bateau.nom,
             "nom_compagnie": voyage.compagnie.nom,
-            "nombre_passagers": reservation.nombre_passagers,
-            "vehicule_inclus": reservation.vehicule_inclus,
-            "type_vehicule": reservation.type_vehicule.value if reservation.type_vehicule else None,
-            "immatriculation_vehicule": reservation.immatriculation_vehicule,
+            "nombre_passagers": nb_passagers,
+            "vehicule_inclus": nb_vehicules > 0,
+            "type_vehicule": str(vehicule_info.type_vehicule_id) if vehicule_info else None,
+            "immatriculation_vehicule": vehicule_info.immatriculation if vehicule_info else None,
             "montant_total": reservation.montant_total
         }
 

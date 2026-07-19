@@ -5,7 +5,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.models.base import Base
 
 if TYPE_CHECKING:
-    from app.models.route import Route
+    from app.models.traversee import Traversee
     from app.models.voyage import ProgrammeVoyage
 
 
@@ -16,8 +16,8 @@ class Pays(Base):
     nom: Mapped[str] = mapped_column(String(100), unique=True, nullable=False, index=True)
     code: Mapped[str] = mapped_column(String(3), unique=True, nullable=False, index=True)
 
-    # Relations
-    villes: Mapped[List["Ville"]] = relationship("Ville", back_populates="pays", lazy="selectin")
+    # Relations (chargement explicite via selectinload dans les requêtes)
+    villes: Mapped[List["Ville"]] = relationship("Ville", back_populates="pays")
 
 
 class Ville(Base):
@@ -31,7 +31,7 @@ class Ville(Base):
 
     # Relations
     pays: Mapped["Pays"] = relationship("Pays", back_populates="villes")
-    ports: Mapped[List["Port"]] = relationship("Port", back_populates="ville", lazy="selectin")
+    ports: Mapped[List["Port"]] = relationship("Port", back_populates="ville")
 
 
 class Port(Base):
@@ -51,14 +51,14 @@ class Port(Base):
 
     # Relations
     ville: Mapped["Ville"] = relationship("Ville", back_populates="ports")
-    routes_depart: Mapped[List["Route"]] = relationship(
-        "Route",
-        foreign_keys="Route.port_depart_id",
+    traversees_depart: Mapped[List["Traversee"]] = relationship(
+        "Traversee",
+        foreign_keys="Traversee.port_depart_id",
         back_populates="port_depart"
     )
-    routes_arrivee: Mapped[List["Route"]] = relationship(
-        "Route",
-        foreign_keys="Route.port_arrivee_id",
+    traversees_arrivee: Mapped[List["Traversee"]] = relationship(
+        "Traversee",
+        foreign_keys="Traversee.port_arrivee_id",
         back_populates="port_arrivee"
     )
     voyages_depart: Mapped[List["ProgrammeVoyage"]] = relationship(

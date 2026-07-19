@@ -27,17 +27,19 @@ class BateauInfo(BaseModel):
     id: int
     nom: str
     capacite_passagers: int
-    capacite_vehicules: Optional[int] = None
+    capacites_vehicules: Optional[List[dict]] = []  # Liste des capacités par type
     immatriculation: Optional[str] = None
     vitesse_croisiere: Optional[float] = None
     longueur: Optional[float] = None
+    largeur: Optional[float] = None
+    tonnage: Optional[float] = None
     tirant_eau: Optional[float] = None
     puissance_moteur: Optional[float] = None
-    clim: Optional[bool] = False
     wifi: Optional[bool] = False
     restaurant: Optional[bool] = False
     boutique: Optional[bool] = False
-    cabines: Optional[bool] = False
+    jeux: Optional[bool] = False
+    salon_coiffure: Optional[bool] = False
     en_maintenance: Optional[bool] = False
     date_derniere_revision: Optional[date] = None
     date_prochaine_revision: Optional[date] = None

@@ -12,14 +12,14 @@ if TYPE_CHECKING:
 
 class ModePaiement(str, enum.Enum):
     carte = "carte"
-    mobile_money = "mobile_money"
+    mobile_money = "mobile money"
     virement = "virement"
-    especes_bord = "especes_bord"
+    especes = "especes"
 
 
 class StatutPaiement(str, enum.Enum):
     initie = "initie"
-    en_cours = "en_cours"
+    en_cours = "en cours"
     reussi = "reussi"
     echoue = "echoue"
     rembourse = "rembourse"

@@ -17,6 +17,8 @@ class RoleUtilisateur(str, enum.Enum):
     client = "client"
     admin_compagnie = "admin_compagnie"
     super_admin = "super_admin"
+    agent = "agent"
+    # agent / c'est la personne qui scanne le qrcode lors de l'embarquement des passagers .
 
 
 class SexeUtilisateur(str, enum.Enum):
@@ -44,7 +46,6 @@ class Utilisateur(ModeleDeBase):
     notification_email: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
     notification_sms: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
 
-    # Multi-tenancy (compte admin lié à une compagnie pour le backoffice)
     role: Mapped[RoleUtilisateur] = mapped_column(
         SQLEnum(RoleUtilisateur),
         default=RoleUtilisateur.client,
