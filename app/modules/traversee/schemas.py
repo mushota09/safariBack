@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, List
 
 
 class TraverseeSearchParams(BaseModel):
